@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-19T21:50:09.165Z",
+  "generated_at": "2026-10-19T22:08:32.403Z",
   "environment": {
     "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
     "cpu_count": 2,
@@ -15,7 +15,7 @@
       "work_mem": "4096"
     },
     "database_location": "same host as the application (loopback)",
-    "database_size_after": "533 MB"
+    "database_size_after": "532 MB"
   },
   "configuration": {
     "DB_POOL_SIZE": "10 (default)",
@@ -37,10 +37,10 @@
     {
       "rows": 10000,
       "bytes": 917061,
-      "submit_ms": 456,
-      "process_ms": 1193,
-      "rows_per_s_processing": 8384,
-      "rows_per_s_end_to_end": 6064,
+      "submit_ms": 434,
+      "process_ms": 1227,
+      "rows_per_s_processing": 8152,
+      "rows_per_s_end_to_end": 6023,
       "status": "completed_with_exceptions",
       "trust": "trusted",
       "accepted": 9900,
@@ -49,10 +49,10 @@
     {
       "rows": 50000,
       "bytes": 4584577,
-      "submit_ms": 2646,
-      "process_ms": 6525,
-      "rows_per_s_processing": 7663,
-      "rows_per_s_end_to_end": 5452,
+      "submit_ms": 1998,
+      "process_ms": 5695,
+      "rows_per_s_processing": 8779,
+      "rows_per_s_end_to_end": 6499,
       "status": "completed_with_exceptions",
       "trust": "trusted",
       "accepted": 49500,
@@ -61,10 +61,10 @@
     {
       "rows": 100000,
       "bytes": 9169336,
-      "submit_ms": 4580,
-      "process_ms": 11767,
-      "rows_per_s_processing": 8498,
-      "rows_per_s_end_to_end": 6117,
+      "submit_ms": 4138,
+      "process_ms": 10951,
+      "rows_per_s_processing": 9131,
+      "rows_per_s_end_to_end": 6627,
       "status": "completed_with_exceptions",
       "trust": "trusted",
       "accepted": 99000,
@@ -76,11 +76,11 @@
     "batches": 8,
     "rows_per_batch": 25000,
     "total_rows": 200000,
-    "submit_wall_ms": 19241,
-    "wall_ms": 24616,
-    "rows_per_s": 8125,
-    "batch_e2e_s_p50": 1.84,
-    "batch_e2e_s_max": 2.35,
+    "submit_wall_ms": 19553,
+    "wall_ms": 23242,
+    "rows_per_s": 8605,
+    "batch_e2e_s_p50": 1.64,
+    "batch_e2e_s_max": 2.38,
     "failed_batches": 0,
     "failure_rate": 0,
     "all_trusted": true
