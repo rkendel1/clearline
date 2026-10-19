@@ -28,7 +28,7 @@
 
 | # | Threat | Control | Evidence |
 |---|---|---|---|
-| T1 | A tenant user reads another tenant's data via the API | Every tenant-scoped route is authorized against `:tenant` **before** the handler runs; every data access runs in a transaction scoped by `app.tenant_id`; core tables enforce **row-level security** (`FORCE RLS`, policy `core.can_see_tenant`) as a second, independent layer | Scenario G: 4 endpoints × 2 roles → 403 `cross_tenant_denied`; platform admin → 403 |
+| T1 | A tenant user reads another tenant's data via the API | Three layers. (1) Every tenant-scoped route is authorized against `:tenant` before the handler runs. (2) The authenticated tenant is bound to the request (`AsyncLocalStorage`), and the data layer refuses to open a transaction for any other tenant, so a route that skips or mis-applies authorization still cannot read another tenant (audited as `authz.scope_violation`). (3) Core tables enforce **row-level security** (`FORCE RLS`, `core.can_see_tenant`) keyed on the transaction's tenant, which catches queries that forget a `tenant_id` filter. | Scenario G: 4 endpoints × 2 roles → 403 `cross_tenant_denied`; platform admin → 403. Integration test for layer 2. Mutation check: with layer 1 deleted, the same requests still returned 403 with no data returned |
 | T2 | A BI user reads another tenant's data via SQL | Reporting roles are NOLOGIN groups mapped to exactly one tenant; RLS resolves the session user's tenant through a SECURITY DEFINER function; setting `app.tenant_id` does not widen visibility; base tables and raw records are not granted | Scenario G (SQL section); Scenario J BI login |
 | T3 | Unauthorized sensitive-field export | Extracts redact `pii`/`phi` fields by default; `include_sensitive` requires `extract:sensitive` (admin only); denied attempts are audited with parameters | Scenario G; integration tests |
 | T4 | Sensitive data leaks through reporting views | `rpt_*` views are generated without `pii`/`phi` columns; lowering a field's sensitivity is a breaking change requiring approval | Scenario G column check; unit test `storage generation…` |
@@ -55,7 +55,8 @@
 
 ## Known gaps (not implemented)
 
-- **Canonical tenant tables (`t_<tenant>.*`) are protected by schema separation and application-level scoping, not by RLS.** The service role can read all tenant schemas. A bug that builds the wrong schema name in service code would not be stopped by the database. A per-tenant service role (`SET ROLE` per transaction) would close this.
+- **Canonical tenant tables (`t_<tenant>.*`) are protected by schema separation and the request-bound tenant scope, not by RLS.** The service role can read all tenant schemas, so a bug that builds the wrong schema name *inside an otherwise correctly scoped transaction* would not be stopped by the database. A per-tenant runtime role (`SET ROLE` per transaction) would close this.
+- `withSystem` (platform scope, used for authentication and token management) is not restricted by the request binding. Its call sites are few and reviewed, but a misuse would bypass tenant RLS.
 - **Single database role** for migrations and runtime. Production should split an owner/migration role from a least-privilege runtime role.
 - **No encryption of individual fields** at rest; at-rest protection relies on the database volume or managed service. No application-level key management.
 - **Static bearer tokens**: no expiry, no SSO/OIDC, no MFA, no per-token scopes beyond role. Revocation exists, rotation is manual.

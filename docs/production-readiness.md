@@ -57,7 +57,7 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 
 | Capability | Status | Evidence / note |
 |---|---|---|
-| Backend tenant authorization; RLS on core tables; per-tenant schemas | Tested | Scenario G; integration role matrix |
+| Backend tenant authorization; request-bound tenant scope in the data layer; RLS on core tables; per-tenant schemas | Tested | Scenario G; integration role matrix and scope-guard test; mutation checks (see test-results.md) |
 | Roles (admin, operator, reporter) and platform admin without data access | Tested | Integration tests; Scenario G |
 | Sensitive-field classification, redaction in extracts, records, lineage, views | Tested | Scenarios A, G |
 | Sensitive data in unexpected locations | Tested | Scenario D |

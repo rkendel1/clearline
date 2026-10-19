@@ -4,7 +4,23 @@
 // A query issued outside these helpers sees no tenant rows (RLS fails closed).
 
 import pg from 'pg';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { loadConfig } from './config.js';
+import { AppError } from './errors.js';
+
+/**
+ * The tenant an authenticated HTTP request is allowed to touch, bound by the
+ * API layer for the lifetime of the request. withTenant() refuses any other
+ * tenant, so a missing or wrong authorization check in a route cannot open a
+ * transaction (and therefore an RLS scope) for another tenant. Outside a
+ * request (worker, CLI, tests) no binding exists and the check does not apply.
+ */
+export const requestTenant = new AsyncLocalStorage<{ tenantId: string | null; actor: string }>();
+export class TenantScopeViolation extends AppError {
+  constructor(requested: string, bound: string | null) {
+    super(403, 'cross_tenant_denied', 'Access to another tenant is not permitted', { requested_tenant: requested, principal_tenant: bound });
+  }
+}
 
 // Return NUMERIC as string (exact decimals), BIGINT as string, DATE as 'YYYY-MM-DD'.
 pg.types.setTypeParser(1082, (v) => v);
@@ -48,6 +64,8 @@ async function inTx<T>(setup: (c: Tx) => Promise<void>, fn: (c: Tx) => Promise<T
 }
 
 export function withTenant<T>(tenantId: string, fn: (c: Tx) => Promise<T>): Promise<T> {
+  const bound = requestTenant.getStore();
+  if (bound && bound.tenantId !== tenantId) return Promise.reject(new TenantScopeViolation(tenantId, bound.tenantId));
   return inTx(async (c) => {
     await c.query(`SELECT set_config('app.tenant_id', $1, true), set_config('app.scope', 'tenant', true)`, [tenantId]);
   }, fn);

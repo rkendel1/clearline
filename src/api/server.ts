@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../platform/config.js';
-import { getPool, withSystem } from '../platform/db.js';
+import { getPool, withSystem, requestTenant, TenantScopeViolation } from '../platform/db.js';
 import { log } from '../platform/logger.js';
 import { metrics, renderMetrics } from '../platform/metrics.js';
 import { AppError } from '../platform/errors.js';
@@ -57,6 +57,12 @@ export async function buildServer(): Promise<FastifyInstance> {
   });
 
   app.setErrorHandler(async (err, req, rep) => {
+    if (err instanceof TenantScopeViolation) {
+      // Reaching this means a route skipped or mis-applied authorization: a defect, logged loudly and audited.
+      log.error('tenant scope violation blocked at data layer', { route: req.routeOptions.url, correlation_id: req.correlationId, actor: req.principal?.actor, details: err.details });
+      const d = err.details as { requested_tenant: string; principal_tenant: string | null };
+      await audit({ tenantId: d.requested_tenant, actor: req.principal?.actor ?? 'unknown', role: req.principal?.role ?? null, action: 'authz.scope_violation', resource: req.routeOptions.url ?? null, outcome: 'denied', details: d, correlationId: req.correlationId }).catch(() => {});
+    }
     if (err instanceof AppError) return rep.code(err.status).send({ error: { code: err.code, message: err.message, details: err.details }, correlation_id: req.correlationId });
     const e = err as Error & { statusCode?: number; code?: string };
     if (e.statusCode && e.statusCode < 500) return rep.code(e.statusCode).send({ error: { code: e.code ?? 'bad_request', message: e.message }, correlation_id: req.correlationId });
@@ -96,7 +102,9 @@ export async function buildServer(): Promise<FastifyInstance> {
             await authorize(p, r.perm, platformTokenIssue ? null : tenant, `${r.method} ${r.url}`);
           }
         }
-        return r.handler(req as FastifyRequest, rep, p as Principal);
+        if (!p) return r.handler(req as FastifyRequest, rep, p as unknown as Principal);
+        // Bind the principal's tenant for the whole request: the data layer refuses any other tenant (defence in depth).
+        return requestTenant.run({ tenantId: p.tenantId, actor: p.actor }, () => r.handler(req as FastifyRequest, rep, p as Principal));
       },
     });
   }

@@ -8,6 +8,7 @@ import { setup, teardown, client, DEV_TOKENS, sql, type Ctx } from '../helpers/h
 import { NW_PLANS, nwMembers, nwClaims, toCsv, NW_MEMBER_COLUMNS, NW_CLAIM_COLUMNS } from '../../synthetic/generator.js';
 import { resetConfigForTests } from '../../src/platform/config.js';
 import { runRetention } from '../../src/control/retention.js';
+import { requestTenant, withTenant } from '../../src/platform/db.js';
 
 let ctx: Ctx;
 before(async () => { ctx = await setup(); });
@@ -179,4 +180,14 @@ test('retention purges raw payloads and resolved quarantine but keeps provenance
   assert.deepEqual(raw[0], { live: 0, nohash: 0 });
   const lin = (await client(ctx, DEV_TOKENS.northwind.admin).get(`${NW}/lineage/member/${nwMembers(40, 1101)[0].MBR_ID}`)).body;
   assert.ok(lin.versions[0].batch.payload_digest || lin.versions[0].batch.id, 'batch provenance remains after payload purge');
+});
+
+test('data layer refuses a tenant transaction that does not match the request principal (independent of route checks)', async () => {
+  // Simulates a route that forgot to authorize: the request is bound to bluefin but code asks for northwind.
+  await assert.rejects(requestTenant.run({ tenantId: 'bluefin', actor: 'bug' }, () => withTenant('northwind', async (tx) => (await tx.query('SELECT 1')).rows)),
+    (e: Error & { code?: string }) => e.code === 'cross_tenant_denied');
+  await assert.rejects(requestTenant.run({ tenantId: null, actor: 'platform' }, () => withTenant('northwind', async () => 1)),
+    (e: Error & { code?: string }) => e.code === 'cross_tenant_denied', 'platform admins can never open a tenant scope');
+  assert.equal(await requestTenant.run({ tenantId: 'northwind', actor: 'ok' }, () => withTenant('northwind', async () => 'ok')), 'ok');
+  assert.equal(await withTenant('northwind', async () => 'worker'), 'worker', 'no binding outside requests (worker, CLI)');
 });
