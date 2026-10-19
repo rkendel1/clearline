@@ -1,0 +1,148 @@
+{
+  "extract_id": "claims",
+  "title": "Medical claims (current adjudication)",
+  "entity": "claim",
+  "contract_version": "1.0.0",
+  "format": "text/csv; header=present; charset=utf-8",
+  "columns": [
+    {
+      "name": "_record_id",
+      "type": "integer",
+      "description": "canonical record version id (lineage)"
+    },
+    {
+      "name": "_key",
+      "type": "string",
+      "description": "entity key"
+    },
+    {
+      "name": "_batch_id",
+      "type": "string",
+      "description": "batch that produced this version"
+    },
+    {
+      "name": "_contract_version",
+      "type": "string",
+      "description": "contract version that produced this version"
+    },
+    {
+      "name": "_trust_status",
+      "type": "string",
+      "description": "trusted | untrusted (batch reconciliation/quality outcome)"
+    },
+    {
+      "name": "claim_id",
+      "type": "string",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false
+    },
+    {
+      "name": "member_id",
+      "type": "string",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false
+    },
+    {
+      "name": "provider_npi",
+      "type": "string",
+      "description": null,
+      "sensitivity": "public",
+      "nullable": false,
+      "redacted_by_default": false
+    },
+    {
+      "name": "service_date",
+      "type": "date",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false
+    },
+    {
+      "name": "received_date",
+      "type": "date",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false
+    },
+    {
+      "name": "diagnosis_code",
+      "type": "string",
+      "description": null,
+      "sensitivity": "phi",
+      "nullable": false,
+      "redacted_by_default": true
+    },
+    {
+      "name": "procedure_code",
+      "type": "string",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": true,
+      "redacted_by_default": false
+    },
+    {
+      "name": "billed_amount",
+      "type": "decimal",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false,
+      "precision": 12,
+      "scale": 2
+    },
+    {
+      "name": "allowed_amount",
+      "type": "decimal",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": true,
+      "redacted_by_default": false,
+      "precision": 12,
+      "scale": 2
+    },
+    {
+      "name": "paid_amount",
+      "type": "decimal",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false,
+      "precision": 12,
+      "scale": 2
+    },
+    {
+      "name": "status",
+      "type": "enum",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false,
+      "values": [
+        "PAID",
+        "DENIED",
+        "PENDED",
+        "REVERSED"
+      ]
+    },
+    {
+      "name": "adjudication_seq",
+      "type": "integer",
+      "description": null,
+      "sensitivity": "internal",
+      "nullable": false,
+      "redacted_by_default": false
+    }
+  ],
+  "filterable": [
+    "service_date",
+    "status",
+    "member_id"
+  ],
+  "ordering": "_key ascending"
+}

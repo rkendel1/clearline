@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "sensitive_export_denied",
+    "message": "Role reporter may not export sensitive fields; request without include_sensitive to receive redacted values"
+  },
+  "correlation_id": "ebab2f32-43cd-455f-beb6-b0143544e60d"
+}

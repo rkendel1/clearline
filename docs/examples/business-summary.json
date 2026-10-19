@@ -1,0 +1,165 @@
+{
+  "tenant": "northwind",
+  "contract_version": "1.0.0",
+  "generated_at": "2026-10-19T21:50:40.689Z",
+  "metrics": [
+    {
+      "id": "active_members",
+      "title": "Active members",
+      "description": "Members whose current eligibility status is ACTIVE.",
+      "unit": "count",
+      "entity": "member",
+      "aggregation": "count",
+      "field": null,
+      "filter": {
+        "op": "eq",
+        "field": "status",
+        "value": "ACTIVE"
+      },
+      "value": "99",
+      "value_including_untrusted": "99",
+      "untrusted_records_excluded": 0,
+      "trusted": true
+    },
+    {
+      "id": "members_total",
+      "title": "Members on file",
+      "description": "Members with a current eligibility record in any status.",
+      "unit": "count",
+      "entity": "member",
+      "aggregation": "count",
+      "field": null,
+      "filter": null,
+      "value": "150",
+      "value_including_untrusted": "150",
+      "untrusted_records_excluded": 0,
+      "trusted": true
+    },
+    {
+      "id": "claims_total",
+      "title": "Claims",
+      "description": "Distinct claims (current adjudication) in any status.",
+      "unit": "count",
+      "entity": "claim",
+      "aggregation": "count",
+      "field": null,
+      "filter": null,
+      "value": "397",
+      "value_including_untrusted": "457",
+      "untrusted_records_excluded": 60,
+      "trusted": false
+    },
+    {
+      "id": "paid_claims",
+      "title": "Paid claims",
+      "description": "Claims whose current adjudication status is PAID.",
+      "unit": "count",
+      "entity": "claim",
+      "aggregation": "count",
+      "field": null,
+      "filter": {
+        "op": "eq",
+        "field": "status",
+        "value": "PAID"
+      },
+      "value": "279",
+      "value_including_untrusted": "317",
+      "untrusted_records_excluded": 60,
+      "trusted": false
+    },
+    {
+      "id": "denied_claims",
+      "title": "Denied claims",
+      "description": "Claims whose current adjudication status is DENIED.",
+      "unit": "count",
+      "entity": "claim",
+      "aggregation": "count",
+      "field": null,
+      "filter": {
+        "op": "eq",
+        "field": "status",
+        "value": "DENIED"
+      },
+      "value": "46",
+      "value_including_untrusted": "59",
+      "untrusted_records_excluded": 60,
+      "trusted": false
+    },
+    {
+      "id": "total_paid",
+      "title": "Total paid (medical)",
+      "description": "Sum of paid_amount over current claim versions with status PAID or REVERSED.",
+      "unit": "usd",
+      "entity": "claim",
+      "aggregation": "sum",
+      "field": "paid_amount",
+      "filter": {
+        "op": "in",
+        "field": "status",
+        "values": [
+          "PAID",
+          "REVERSED"
+        ]
+      },
+      "value": "189670.45",
+      "value_including_untrusted": "219121.70",
+      "untrusted_records_excluded": 60,
+      "trusted": false
+    },
+    {
+      "id": "total_billed",
+      "title": "Total billed (medical)",
+      "description": "Sum of billed_amount over all current claim versions.",
+      "unit": "usd",
+      "entity": "claim",
+      "aggregation": "sum",
+      "field": "billed_amount",
+      "filter": null,
+      "value": "489755.37",
+      "value_including_untrusted": "571002.34",
+      "untrusted_records_excluded": 60,
+      "trusted": false
+    },
+    {
+      "id": "rx_fills",
+      "title": "Pharmacy fills",
+      "description": "Current pharmacy fills with status FILLED.",
+      "unit": "count",
+      "entity": "pharmacy_fill",
+      "aggregation": "count",
+      "field": null,
+      "filter": {
+        "op": "eq",
+        "field": "status",
+        "value": "FILLED"
+      },
+      "value": "120",
+      "value_including_untrusted": "120",
+      "untrusted_records_excluded": 0,
+      "trusted": true
+    },
+    {
+      "id": "rx_plan_paid",
+      "title": "Pharmacy plan paid",
+      "description": "Sum of plan_paid over current FILLED pharmacy fills.",
+      "unit": "usd",
+      "entity": "pharmacy_fill",
+      "aggregation": "sum",
+      "field": "plan_paid",
+      "filter": {
+        "op": "eq",
+        "field": "status",
+        "value": "FILLED"
+      },
+      "value": "31177.27",
+      "value_including_untrusted": "31177.27",
+      "untrusted_records_excluded": 0,
+      "trusted": true
+    }
+  ],
+  "exception_rate": {
+    "received": 758,
+    "quarantined": 3,
+    "rate": 0.003958
+  }
+}

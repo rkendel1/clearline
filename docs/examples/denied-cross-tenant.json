@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "cross_tenant_denied",
+    "message": "Access to another tenant is not permitted"
+  },
+  "correlation_id": "7a6bb95c-7d2f-4253-8479-65e1e68e5b63"
+}

@@ -1,0 +1,1393 @@
+{
+  "$schema": "../contract.schema.json",
+  "contract_id": "northwind.benefits",
+  "tenant": "northwind",
+  "version": "2.0.0",
+  "description": "Northwind Health Plan: medical plan administrator. Members, benefit plans, medical claims (adjudicated with sequence numbers) and pharmacy fills. v2: claims carry line of business; PENDED status renamed PENDING; procedure_code retired.",
+  "entities": {
+    "plan": {
+      "description": "Benefit plan reference data.",
+      "fields": {
+        "plan_code": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "format": "alnum",
+          "max_length": 12,
+          "sensitivity": "public"
+        },
+        "plan_name": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "max_length": 120,
+          "sensitivity": "public"
+        },
+        "plan_type": {
+          "type": "enum",
+          "values": [
+            "HMO",
+            "PPO",
+            "EPO",
+            "HDHP"
+          ],
+          "required": true,
+          "nullable": false,
+          "sensitivity": "public"
+        },
+        "deductible": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2,
+          "min": 0,
+          "required": true,
+          "nullable": false,
+          "sensitivity": "public"
+        },
+        "oop_max": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2,
+          "min": 0,
+          "required": true,
+          "nullable": false,
+          "sensitivity": "public"
+        },
+        "effective_date": {
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "public"
+        },
+        "termination_date": {
+          "type": "date",
+          "sensitivity": "public"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        }
+      },
+      "key": [
+        "plan_code"
+      ],
+      "correction": {
+        "strategy": "supersede_by_order",
+        "order_by": "updated_at"
+      },
+      "rules": [
+        {
+          "id": "oop_covers_deductible",
+          "description": "Out-of-pocket maximum must be at least the deductible",
+          "severity": "error",
+          "assert": {
+            "field": "oop_max",
+            "op": "gte",
+            "other_field": "deductible"
+          }
+        },
+        {
+          "id": "plan_dates_ordered",
+          "description": "Termination date must not precede effective date",
+          "severity": "error",
+          "assert": {
+            "field": "termination_date",
+            "op": "gte",
+            "other_field": "effective_date"
+          }
+        }
+      ],
+      "freshness": {
+        "max_age_hours": 720
+      }
+    },
+    "member": {
+      "description": "Member eligibility (one current version per member).",
+      "fields": {
+        "member_id": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "format": "alnum",
+          "max_length": 15,
+          "sensitivity": "internal",
+          "description": "Synthetic member identifier"
+        },
+        "ssn": {
+          "type": "string",
+          "max_length": 11,
+          "sensitivity": "pii",
+          "description": "Synthetic SSN (900-series, never valid)"
+        },
+        "first_name": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "max_length": 60,
+          "sensitivity": "pii"
+        },
+        "last_name": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "max_length": 60,
+          "sensitivity": "pii"
+        },
+        "date_of_birth": {
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "min": "1900-01-01",
+          "sensitivity": "phi"
+        },
+        "gender": {
+          "type": "enum",
+          "values": [
+            "F",
+            "M",
+            "U"
+          ],
+          "sensitivity": "phi"
+        },
+        "zip": {
+          "type": "string",
+          "format": "zip5",
+          "sensitivity": "internal"
+        },
+        "plan_code": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "public"
+        },
+        "coverage_start": {
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "coverage_end": {
+          "type": "date",
+          "sensitivity": "internal"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "ACTIVE",
+            "TERMINATED",
+            "PENDING"
+          ],
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        }
+      },
+      "key": [
+        "member_id"
+      ],
+      "correction": {
+        "strategy": "supersede_by_order",
+        "order_by": "updated_at"
+      },
+      "relationships": [
+        {
+          "id": "member_plan",
+          "field": "plan_code",
+          "references": {
+            "entity": "plan",
+            "field": "plan_code"
+          },
+          "on_missing": "quarantine"
+        }
+      ],
+      "rules": [
+        {
+          "id": "coverage_dates_ordered",
+          "description": "Coverage end must not precede coverage start",
+          "severity": "error",
+          "assert": {
+            "field": "coverage_end",
+            "op": "gte",
+            "other_field": "coverage_start"
+          }
+        },
+        {
+          "id": "dob_not_future",
+          "description": "Date of birth cannot be after the file arrived",
+          "severity": "error",
+          "assert": {
+            "field": "date_of_birth",
+            "op": "not_after_arrival"
+          }
+        },
+        {
+          "id": "terminated_has_end",
+          "description": "Terminated members must have a coverage end date",
+          "severity": "error",
+          "when": {
+            "field": "status",
+            "op": "eq",
+            "value": "TERMINATED"
+          },
+          "assert": {
+            "field": "coverage_end",
+            "op": "not_null"
+          }
+        },
+        {
+          "id": "born_before_coverage",
+          "description": "Coverage cannot start before date of birth",
+          "severity": "warning",
+          "assert": {
+            "field": "coverage_start",
+            "op": "gte",
+            "other_field": "date_of_birth"
+          }
+        }
+      ],
+      "freshness": {
+        "max_age_hours": 26
+      }
+    },
+    "claim": {
+      "description": "Medical claim header. Re-adjudications arrive with a higher adjudication_seq and supersede earlier versions.",
+      "fields": {
+        "claim_id": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "format": "alnum",
+          "max_length": 20,
+          "sensitivity": "internal"
+        },
+        "member_id": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "provider_npi": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "format": "npi10",
+          "sensitivity": "public"
+        },
+        "service_date": {
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "received_date": {
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "diagnosis_code": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "format": "icd10",
+          "sensitivity": "phi"
+        },
+        "billed_amount": {
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "min": 0,
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "allowed_amount": {
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "min": 0,
+          "sensitivity": "internal"
+        },
+        "paid_amount": {
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "PAID",
+            "DENIED",
+            "PENDING",
+            "REVERSED"
+          ],
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "adjudication_seq": {
+          "type": "integer",
+          "required": true,
+          "nullable": false,
+          "min": 1,
+          "sensitivity": "internal"
+        },
+        "line_of_business": {
+          "type": "enum",
+          "values": [
+            "COMMERCIAL",
+            "MEDICARE",
+            "MEDICAID"
+          ],
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        }
+      },
+      "key": [
+        "claim_id"
+      ],
+      "correction": {
+        "strategy": "supersede_by_order",
+        "order_by": "adjudication_seq"
+      },
+      "relationships": [
+        {
+          "id": "claim_member",
+          "field": "member_id",
+          "references": {
+            "entity": "member",
+            "field": "member_id"
+          },
+          "on_missing": "warn"
+        }
+      ],
+      "rules": [
+        {
+          "id": "paid_le_billed",
+          "description": "Paid amount cannot exceed billed amount",
+          "severity": "error",
+          "assert": {
+            "field": "paid_amount",
+            "op": "lte",
+            "other_field": "billed_amount"
+          }
+        },
+        {
+          "id": "allowed_le_billed",
+          "description": "Allowed amount should not exceed billed amount",
+          "severity": "warning",
+          "assert": {
+            "field": "allowed_amount",
+            "op": "lte",
+            "other_field": "billed_amount"
+          }
+        },
+        {
+          "id": "denied_zero_paid",
+          "description": "Denied claims must have zero paid amount",
+          "severity": "error",
+          "when": {
+            "field": "status",
+            "op": "eq",
+            "value": "DENIED"
+          },
+          "assert": {
+            "field": "paid_amount",
+            "op": "eq",
+            "value": 0
+          }
+        },
+        {
+          "id": "paid_nonnegative",
+          "description": "Paid amount may be negative only for reversals",
+          "severity": "error",
+          "when": {
+            "field": "status",
+            "op": "ne",
+            "value": "REVERSED"
+          },
+          "assert": {
+            "field": "paid_amount",
+            "op": "gte",
+            "value": 0
+          }
+        },
+        {
+          "id": "service_not_future",
+          "description": "Service date cannot be after the file arrived",
+          "severity": "error",
+          "assert": {
+            "field": "service_date",
+            "op": "not_after_arrival"
+          }
+        },
+        {
+          "id": "received_after_service",
+          "description": "Claim cannot be received before the service date",
+          "severity": "error",
+          "assert": {
+            "field": "received_date",
+            "op": "gte",
+            "other_field": "service_date"
+          }
+        },
+        {
+          "id": "timely_filing",
+          "description": "Claim received more than 365 days after service (timely filing)",
+          "severity": "warning",
+          "assert": {
+            "field": "received_date",
+            "op": "within_days_of",
+            "other_field": "service_date",
+            "days": 365
+          }
+        }
+      ],
+      "freshness": {
+        "max_age_hours": 26
+      }
+    },
+    "pharmacy_fill": {
+      "description": "Pharmacy transaction (one per prescription fill).",
+      "fields": {
+        "fill_id": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "max_length": 30,
+          "sensitivity": "internal",
+          "description": "rx_number-fill_number"
+        },
+        "member_id": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "ndc": {
+          "type": "string",
+          "required": true,
+          "nullable": false,
+          "format": "ndc11",
+          "sensitivity": "public"
+        },
+        "fill_date": {
+          "type": "date",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "days_supply": {
+          "type": "integer",
+          "required": true,
+          "nullable": false,
+          "min": 1,
+          "max": 365,
+          "sensitivity": "internal"
+        },
+        "quantity": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 3,
+          "min": 0,
+          "sensitivity": "internal"
+        },
+        "ingredient_cost": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2,
+          "min": 0,
+          "sensitivity": "internal"
+        },
+        "dispensing_fee": {
+          "type": "decimal",
+          "precision": 8,
+          "scale": 2,
+          "min": 0,
+          "sensitivity": "internal"
+        },
+        "plan_paid": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2,
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "member_paid": {
+          "type": "decimal",
+          "precision": 10,
+          "scale": 2,
+          "sensitivity": "internal"
+        },
+        "status": {
+          "type": "enum",
+          "values": [
+            "FILLED",
+            "REVERSED"
+          ],
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        },
+        "pharmacy_npi": {
+          "type": "string",
+          "format": "npi10",
+          "sensitivity": "public"
+        },
+        "updated_at": {
+          "type": "timestamp",
+          "required": true,
+          "nullable": false,
+          "sensitivity": "internal"
+        }
+      },
+      "key": [
+        "fill_id"
+      ],
+      "correction": {
+        "strategy": "supersede_by_order",
+        "order_by": "updated_at"
+      },
+      "relationships": [
+        {
+          "id": "fill_member",
+          "field": "member_id",
+          "references": {
+            "entity": "member",
+            "field": "member_id"
+          },
+          "on_missing": "warn"
+        }
+      ],
+      "rules": [
+        {
+          "id": "fill_not_future",
+          "description": "Fill date cannot be after the transaction arrived",
+          "severity": "error",
+          "assert": {
+            "field": "fill_date",
+            "op": "not_after_arrival"
+          }
+        },
+        {
+          "id": "long_supply",
+          "description": "Days supply above 90 requires review",
+          "severity": "warning",
+          "assert": {
+            "field": "days_supply",
+            "op": "lte",
+            "value": 90
+          }
+        }
+      ],
+      "freshness": {
+        "max_age_hours": 26
+      }
+    }
+  },
+  "sources": {
+    "nw_plans_csv": {
+      "description": "Monthly plan reference file (CSV).",
+      "entity": "plan",
+      "formats": [
+        "csv"
+      ],
+      "mappings": [
+        {
+          "target": "plan_code",
+          "from": "PLAN_CD",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "plan_name",
+          "from": "PLAN_NM",
+          "transforms": [
+            {
+              "op": "trim"
+            }
+          ]
+        },
+        {
+          "target": "plan_type",
+          "from": "PLAN_TYP",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "deductible",
+          "from": "DEDUCT_AMT",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "oop_max",
+          "from": "OOP_MAX_AMT",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "effective_date",
+          "from": "EFF_DT",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "MM/DD/YYYY"
+            }
+          ]
+        },
+        {
+          "target": "termination_date",
+          "from": "TERM_DT",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "MM/DD/YYYY"
+            }
+          ]
+        },
+        {
+          "target": "updated_at",
+          "from": "LAST_UPD_TS",
+          "transforms": [
+            {
+              "op": "parse_timestamp",
+              "format": "iso8601"
+            }
+          ]
+        }
+      ]
+    },
+    "nw_eligibility_csv": {
+      "description": "Daily eligibility feed (CSV, MM/DD/YYYY dates, single-letter codes).",
+      "entity": "member",
+      "formats": [
+        "csv"
+      ],
+      "mappings": [
+        {
+          "target": "member_id",
+          "from": "MBR_ID",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "ssn",
+          "from": "SSN",
+          "transforms": [
+            {
+              "op": "trim"
+            }
+          ]
+        },
+        {
+          "target": "first_name",
+          "from": "FIRST_NM",
+          "transforms": [
+            {
+              "op": "trim"
+            }
+          ]
+        },
+        {
+          "target": "last_name",
+          "from": "LAST_NM",
+          "transforms": [
+            {
+              "op": "trim"
+            }
+          ]
+        },
+        {
+          "target": "date_of_birth",
+          "from": "DOB",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "MM/DD/YYYY"
+            }
+          ]
+        },
+        {
+          "target": "gender",
+          "from": "GENDER_CD",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            },
+            {
+              "op": "map_values",
+              "map": {
+                "F": "F",
+                "M": "M",
+                "U": "U",
+                "X": "U"
+              },
+              "unmapped": "error"
+            }
+          ]
+        },
+        {
+          "target": "zip",
+          "from": "ZIP",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "left_pad",
+              "length": 5,
+              "char": "0"
+            }
+          ]
+        },
+        {
+          "target": "plan_code",
+          "from": "PLAN_CD",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "coverage_start",
+          "from": "COV_START",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "MM/DD/YYYY"
+            }
+          ]
+        },
+        {
+          "target": "coverage_end",
+          "from": "COV_END",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "MM/DD/YYYY"
+            }
+          ]
+        },
+        {
+          "target": "status",
+          "from": "MBR_STATUS",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            },
+            {
+              "op": "map_values",
+              "map": {
+                "A": "ACTIVE",
+                "T": "TERMINATED",
+                "P": "PENDING"
+              },
+              "unmapped": "error"
+            }
+          ]
+        },
+        {
+          "target": "updated_at",
+          "from": "LAST_UPD_TS",
+          "transforms": [
+            {
+              "op": "parse_timestamp",
+              "format": "iso8601"
+            }
+          ]
+        }
+      ],
+      "max_reject_rate": 0.05,
+      "max_processing_seconds": 300,
+      "sensitive_scan": {
+        "unmapped_columns": "quarantine",
+        "classified_fields": "quarantine"
+      }
+    },
+    "nw_medical_claims_csv": {
+      "description": "Daily medical claims file (CSV). Sender supplies control totals for paid and billed amounts.",
+      "entity": "claim",
+      "formats": [
+        "csv"
+      ],
+      "mappings": [
+        {
+          "target": "claim_id",
+          "from": "CLM_ID",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "member_id",
+          "from": "MBR_ID",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "provider_npi",
+          "from": "RENDERING_NPI",
+          "transforms": [
+            {
+              "op": "strip_non_digits"
+            }
+          ]
+        },
+        {
+          "target": "service_date",
+          "from": "SVC_DT",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "YYYY-MM-DD"
+            }
+          ]
+        },
+        {
+          "target": "received_date",
+          "from": "RCVD_DT",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "YYYY-MM-DD"
+            }
+          ]
+        },
+        {
+          "target": "diagnosis_code",
+          "from": "DX_CD",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "billed_amount",
+          "from": "BILLED_AMT",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "allowed_amount",
+          "from": "ALLOWED_AMT",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "paid_amount",
+          "from": "PAID_AMT",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "status",
+          "from": "CLM_STATUS",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            },
+            {
+              "op": "map_values",
+              "map": {
+                "P": "PAID",
+                "D": "DENIED",
+                "H": "PENDING",
+                "R": "REVERSED"
+              },
+              "unmapped": "error"
+            }
+          ]
+        },
+        {
+          "target": "adjudication_seq",
+          "from": "ADJ_SEQ",
+          "transforms": [
+            {
+              "op": "parse_integer"
+            }
+          ]
+        },
+        {
+          "target": "line_of_business",
+          "from": "LOB",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            },
+            {
+              "op": "map_values",
+              "map": {
+                "C": "COMMERCIAL",
+                "M": "MEDICARE",
+                "D": "MEDICAID"
+              },
+              "unmapped": "error"
+            }
+          ]
+        }
+      ],
+      "control_totals": {
+        "sum_fields": [
+          "paid_amount",
+          "billed_amount"
+        ]
+      },
+      "max_reject_rate": 0.05,
+      "max_processing_seconds": 300,
+      "sensitive_scan": {
+        "unmapped_columns": "quarantine",
+        "classified_fields": "quarantine"
+      }
+    },
+    "nw_pharmacy_api": {
+      "description": "Pharmacy transactions pushed by the PBM through the JSON API, several times a day.",
+      "entity": "pharmacy_fill",
+      "formats": [
+        "json"
+      ],
+      "mappings": [
+        {
+          "target": "fill_id",
+          "from": [
+            "rxNumber",
+            "fillNumber"
+          ],
+          "separator": "-",
+          "transforms": [
+            {
+              "op": "trim"
+            }
+          ]
+        },
+        {
+          "target": "member_id",
+          "from": "memberId",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "ndc",
+          "from": "ndc",
+          "transforms": [
+            {
+              "op": "strip_non_digits"
+            },
+            {
+              "op": "left_pad",
+              "length": 11,
+              "char": "0"
+            }
+          ]
+        },
+        {
+          "target": "fill_date",
+          "from": "fillDate",
+          "transforms": [
+            {
+              "op": "parse_date",
+              "format": "YYYY-MM-DD"
+            }
+          ]
+        },
+        {
+          "target": "days_supply",
+          "from": "daysSupply",
+          "transforms": [
+            {
+              "op": "parse_integer"
+            }
+          ]
+        },
+        {
+          "target": "quantity",
+          "from": "quantity",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "ingredient_cost",
+          "from": "ingredientCost",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "dispensing_fee",
+          "from": "dispensingFee",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "plan_paid",
+          "from": "planPaid",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "member_paid",
+          "from": "memberPaid",
+          "transforms": [
+            {
+              "op": "parse_decimal"
+            }
+          ]
+        },
+        {
+          "target": "status",
+          "from": "status",
+          "transforms": [
+            {
+              "op": "trim"
+            },
+            {
+              "op": "upper"
+            }
+          ]
+        },
+        {
+          "target": "pharmacy_npi",
+          "from": "pharmacyNpi",
+          "transforms": [
+            {
+              "op": "strip_non_digits"
+            }
+          ]
+        },
+        {
+          "target": "updated_at",
+          "from": "updatedAt",
+          "transforms": [
+            {
+              "op": "parse_timestamp",
+              "format": "iso8601"
+            }
+          ]
+        }
+      ],
+      "control_totals": {
+        "sum_fields": [
+          "plan_paid"
+        ]
+      },
+      "max_reject_rate": 0.05,
+      "max_processing_seconds": 120
+    }
+  },
+  "outputs": {
+    "metrics": [
+      {
+        "id": "active_members",
+        "title": "Active members",
+        "description": "Members whose current eligibility status is ACTIVE.",
+        "entity": "member",
+        "aggregation": "count",
+        "filter": {
+          "field": "status",
+          "op": "eq",
+          "value": "ACTIVE"
+        },
+        "unit": "count"
+      },
+      {
+        "id": "members_total",
+        "title": "Members on file",
+        "description": "Members with a current eligibility record in any status.",
+        "entity": "member",
+        "aggregation": "count",
+        "unit": "count"
+      },
+      {
+        "id": "claims_total",
+        "title": "Claims",
+        "description": "Distinct claims (current adjudication) in any status.",
+        "entity": "claim",
+        "aggregation": "count",
+        "unit": "count"
+      },
+      {
+        "id": "paid_claims",
+        "title": "Paid claims",
+        "description": "Claims whose current adjudication status is PAID.",
+        "entity": "claim",
+        "aggregation": "count",
+        "filter": {
+          "field": "status",
+          "op": "eq",
+          "value": "PAID"
+        },
+        "unit": "count"
+      },
+      {
+        "id": "denied_claims",
+        "title": "Denied claims",
+        "description": "Claims whose current adjudication status is DENIED.",
+        "entity": "claim",
+        "aggregation": "count",
+        "filter": {
+          "field": "status",
+          "op": "eq",
+          "value": "DENIED"
+        },
+        "unit": "count"
+      },
+      {
+        "id": "total_paid",
+        "title": "Total paid (medical)",
+        "description": "Sum of paid_amount over current claim versions with status PAID or REVERSED.",
+        "entity": "claim",
+        "aggregation": "sum",
+        "field": "paid_amount",
+        "filter": {
+          "field": "status",
+          "op": "in",
+          "values": [
+            "PAID",
+            "REVERSED"
+          ]
+        },
+        "unit": "usd"
+      },
+      {
+        "id": "total_billed",
+        "title": "Total billed (medical)",
+        "description": "Sum of billed_amount over all current claim versions.",
+        "entity": "claim",
+        "aggregation": "sum",
+        "field": "billed_amount",
+        "unit": "usd"
+      },
+      {
+        "id": "rx_fills",
+        "title": "Pharmacy fills",
+        "description": "Current pharmacy fills with status FILLED.",
+        "entity": "pharmacy_fill",
+        "aggregation": "count",
+        "filter": {
+          "field": "status",
+          "op": "eq",
+          "value": "FILLED"
+        },
+        "unit": "count"
+      },
+      {
+        "id": "rx_plan_paid",
+        "title": "Pharmacy plan paid",
+        "description": "Sum of plan_paid over current FILLED pharmacy fills.",
+        "entity": "pharmacy_fill",
+        "aggregation": "sum",
+        "field": "plan_paid",
+        "filter": {
+          "field": "status",
+          "op": "eq",
+          "value": "FILLED"
+        },
+        "unit": "usd"
+      },
+      {
+        "id": "medicare_claims",
+        "title": "Medicare claims",
+        "description": "Current claims whose line of business is MEDICARE.",
+        "entity": "claim",
+        "aggregation": "count",
+        "filter": {
+          "field": "line_of_business",
+          "op": "eq",
+          "value": "MEDICARE"
+        },
+        "unit": "count"
+      }
+    ],
+    "extracts": [
+      {
+        "id": "claims",
+        "title": "Medical claims (current adjudication)",
+        "entity": "claim",
+        "fields": [
+          "claim_id",
+          "member_id",
+          "provider_npi",
+          "service_date",
+          "received_date",
+          "diagnosis_code",
+          "billed_amount",
+          "allowed_amount",
+          "paid_amount",
+          "status",
+          "adjudication_seq",
+          "line_of_business"
+        ],
+        "filterable": [
+          "service_date",
+          "status",
+          "member_id",
+          "line_of_business"
+        ]
+      },
+      {
+        "id": "eligibility",
+        "title": "Member eligibility",
+        "entity": "member",
+        "fields": [
+          "member_id",
+          "first_name",
+          "last_name",
+          "date_of_birth",
+          "gender",
+          "zip",
+          "plan_code",
+          "coverage_start",
+          "coverage_end",
+          "status"
+        ],
+        "filterable": [
+          "status",
+          "plan_code"
+        ]
+      }
+    ]
+  },
+  "dataset_checks": [
+    {
+      "id": "paid_within_billed",
+      "description": "Total paid across trusted current claims must not exceed total billed",
+      "left": {
+        "entity": "claim",
+        "aggregation": "sum",
+        "field": "paid_amount"
+      },
+      "op": "lte",
+      "right": {
+        "entity": "claim",
+        "aggregation": "sum",
+        "field": "billed_amount"
+      }
+    },
+    {
+      "id": "rx_paid_nonnegative",
+      "description": "Pharmacy plan-paid total for filled scripts is non-negative",
+      "left": {
+        "entity": "pharmacy_fill",
+        "aggregation": "sum",
+        "field": "plan_paid",
+        "filter": {
+          "field": "status",
+          "op": "eq",
+          "value": "FILLED"
+        }
+      },
+      "op": "gte",
+      "right": {
+        "value": 0
+      }
+    }
+  ],
+  "migration": {
+    "backfill": {
+      "claim": {
+        "line_of_business": "COMMERCIAL"
+      }
+    },
+    "value_maps": {
+      "claim": {
+        "status": {
+          "PENDED": "PENDING"
+        }
+      }
+    }
+  }
+}

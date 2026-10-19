@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://clearline.example/schemas/contract/1.0.json",
+  "title": "Clearline canonical data contract",
+  "description": "Formal definition of a tenant data contract. Structural validity is checked against this schema; cross-reference rules (fields that exist, types that match operators, etc.) are enforced by the semantic validator in src/contracts/validate.ts.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_id", "tenant", "version", "entities", "sources", "outputs"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "contract_id": { "$ref": "#/$defs/dottedName" },
+    "tenant": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,30}$" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "description": { "type": "string", "maxLength": 2000 },
+    "entities": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 20,
+      "propertyNames": { "$ref": "#/$defs/identifier" },
+      "additionalProperties": { "$ref": "#/$defs/entity" }
+    },
+    "sources": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 50,
+      "propertyNames": { "$ref": "#/$defs/identifier" },
+      "additionalProperties": { "$ref": "#/$defs/source" }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metrics", "extracts"],
+      "properties": {
+        "metrics": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/metric" } },
+        "extracts": { "type": "array", "maxItems": 20, "items": { "$ref": "#/$defs/extract" } }
+      }
+    },
+    "dataset_checks": { "type": "array", "maxItems": 50, "items": { "$ref": "#/$defs/datasetCheck" } },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "backfill": {
+          "type": "object",
+          "additionalProperties": { "type": "object", "additionalProperties": { "type": "string" } }
+        },
+        "value_maps": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": { "type": "object", "additionalProperties": { "type": "string" } }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,40}$" },
+    "dottedName": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,40}(\\.[a-z][a-z0-9_]{0,40}){0,3}$" },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["string", "integer", "decimal", "date", "timestamp", "boolean", "enum"] },
+        "description": { "type": "string", "maxLength": 500 },
+        "required": { "type": "boolean" },
+        "nullable": { "type": "boolean" },
+        "sensitivity": { "enum": ["public", "internal", "pii", "phi"] },
+        "precision": { "type": "integer", "minimum": 1, "maximum": 28 },
+        "scale": { "type": "integer", "minimum": 0, "maximum": 10 },
+        "values": { "type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": { "type": "string", "maxLength": 100 } },
+        "max_length": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "min": { "type": ["number", "string"] },
+        "max": { "type": ["number", "string"] },
+        "format": { "enum": ["digits", "alnum", "zip5", "npi10", "ndc11", "icd10", "state2"] }
+      }
+    },
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object", "additionalProperties": false, "required": ["field", "op", "value"],
+          "properties": { "field": { "$ref": "#/$defs/identifier" }, "op": { "enum": ["eq", "ne", "lt", "lte", "gt", "gte"] }, "value": { "type": ["string", "number", "boolean"] } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["field", "op", "other_field"],
+          "properties": { "field": { "$ref": "#/$defs/identifier" }, "op": { "enum": ["eq", "ne", "lt", "lte", "gt", "gte"] }, "other_field": { "$ref": "#/$defs/identifier" } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["field", "op", "values"],
+          "properties": { "field": { "$ref": "#/$defs/identifier" }, "op": { "enum": ["in", "not_in"] }, "values": { "type": "array", "minItems": 1, "maxItems": 200, "items": { "type": ["string", "number"] } } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["field", "op"],
+          "properties": { "field": { "$ref": "#/$defs/identifier" }, "op": { "enum": ["is_null", "not_null", "not_after_arrival"] } }
+        },
+        {
+          "type": "object", "additionalProperties": false, "required": ["field", "op", "other_field", "days"],
+          "properties": { "field": { "$ref": "#/$defs/identifier" }, "op": { "const": "within_days_of" }, "other_field": { "$ref": "#/$defs/identifier" }, "days": { "type": "integer", "minimum": 0, "maximum": 36500 } }
+        },
+        { "type": "object", "additionalProperties": false, "required": ["all"], "properties": { "all": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/condition" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["any"], "properties": { "any": { "type": "array", "minItems": 1, "maxItems": 20, "items": { "$ref": "#/$defs/condition" } } } },
+        { "type": "object", "additionalProperties": false, "required": ["not"], "properties": { "not": { "$ref": "#/$defs/condition" } } }
+      ]
+    },
+    "rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "severity", "assert"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "description": { "type": "string", "maxLength": 500 },
+        "severity": { "enum": ["error", "warning"] },
+        "when": { "$ref": "#/$defs/condition" },
+        "assert": { "$ref": "#/$defs/condition" }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fields", "key", "correction"],
+      "properties": {
+        "description": { "type": "string", "maxLength": 1000 },
+        "fields": {
+          "type": "object", "minProperties": 1, "maxProperties": 200,
+          "propertyNames": { "$ref": "#/$defs/identifier" },
+          "additionalProperties": { "$ref": "#/$defs/field" }
+        },
+        "key": { "type": "array", "minItems": 1, "maxItems": 5, "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } },
+        "correction": {
+          "type": "object", "additionalProperties": false, "required": ["strategy"],
+          "properties": {
+            "strategy": { "enum": ["supersede_by_order", "last_arrival_wins", "immutable"] },
+            "order_by": { "$ref": "#/$defs/identifier" }
+          }
+        },
+        "relationships": {
+          "type": "array", "maxItems": 20,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["id", "field", "references", "on_missing"],
+            "properties": {
+              "id": { "$ref": "#/$defs/identifier" },
+              "field": { "$ref": "#/$defs/identifier" },
+              "references": {
+                "type": "object", "additionalProperties": false, "required": ["entity", "field"],
+                "properties": { "entity": { "$ref": "#/$defs/identifier" }, "field": { "$ref": "#/$defs/identifier" } }
+              },
+              "on_missing": { "enum": ["quarantine", "warn"] }
+            }
+          }
+        },
+        "rules": { "type": "array", "maxItems": 100, "items": { "$ref": "#/$defs/rule" } },
+        "freshness": {
+          "type": "object", "additionalProperties": false, "required": ["max_age_hours"],
+          "properties": { "max_age_hours": { "type": "number", "exclusiveMinimum": 0, "maximum": 8760 } }
+        }
+      }
+    },
+    "transform": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["op"], "properties": { "op": { "enum": ["trim", "upper", "lower", "strip_non_digits", "parse_integer"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "length", "char"], "properties": { "op": { "const": "left_pad" }, "length": { "type": "integer", "minimum": 1, "maximum": 100 }, "char": { "type": "string", "minLength": 1, "maxLength": 1 } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "map", "unmapped"], "properties": { "op": { "const": "map_values" }, "map": { "type": "object", "maxProperties": 500, "additionalProperties": { "type": "string" } }, "unmapped": { "enum": ["keep", "null", "error"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "format"], "properties": { "op": { "const": "parse_date" }, "format": { "enum": ["YYYY-MM-DD", "MM/DD/YYYY", "YYYYMMDD"] } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "format"], "properties": { "op": { "const": "parse_timestamp" }, "format": { "const": "iso8601" } } },
+        { "type": "object", "additionalProperties": false, "required": ["op"], "properties": { "op": { "const": "parse_decimal" }, "implied_scale": { "type": "integer", "minimum": 0, "maximum": 6 } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "true_values", "false_values"], "properties": { "op": { "const": "parse_boolean" }, "true_values": { "type": "array", "items": { "type": "string" }, "minItems": 1 }, "false_values": { "type": "array", "items": { "type": "string" }, "minItems": 1 } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "value"], "properties": { "op": { "const": "default" }, "value": { "type": "string", "maxLength": 200 } } }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "formats", "mappings"],
+      "properties": {
+        "description": { "type": "string", "maxLength": 1000 },
+        "entity": { "$ref": "#/$defs/identifier" },
+        "formats": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "enum": ["csv", "json"] } },
+        "mappings": {
+          "type": "array", "minItems": 1, "maxItems": 200,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["target"],
+            "properties": {
+              "target": { "$ref": "#/$defs/identifier" },
+              "from": {
+                "oneOf": [
+                  { "type": "string", "minLength": 1, "maxLength": 100 },
+                  { "type": "array", "minItems": 2, "maxItems": 10, "items": { "type": "string", "minLength": 1, "maxLength": 100 } }
+                ]
+              },
+              "separator": { "type": "string", "maxLength": 5 },
+              "constant": { "type": "string", "maxLength": 200 },
+              "transforms": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/transform" } }
+            }
+          }
+        },
+        "control_totals": {
+          "type": "object", "additionalProperties": false,
+          "properties": { "sum_fields": { "type": "array", "maxItems": 10, "items": { "$ref": "#/$defs/identifier" } } }
+        },
+        "max_processing_seconds": { "type": "number", "exclusiveMinimum": 0 },
+        "max_reject_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "sensitive_scan": {
+          "type": "object", "additionalProperties": false, "required": ["unmapped_columns", "classified_fields"],
+          "properties": {
+            "unmapped_columns": { "enum": ["warn", "quarantine"] },
+            "classified_fields": { "enum": ["warn", "quarantine"] }
+          }
+        }
+      }
+    },
+    "metric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "description", "entity", "aggregation"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "title": { "type": "string", "maxLength": 100 },
+        "description": { "type": "string", "maxLength": 1000 },
+        "entity": { "$ref": "#/$defs/identifier" },
+        "aggregation": { "enum": ["count", "count_distinct", "sum", "avg"] },
+        "field": { "$ref": "#/$defs/identifier" },
+        "filter": { "$ref": "#/$defs/condition" },
+        "unit": { "enum": ["count", "usd", "ratio"] }
+      }
+    },
+    "extract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "entity", "fields"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "title": { "type": "string", "maxLength": 100 },
+        "entity": { "$ref": "#/$defs/identifier" },
+        "fields": { "type": "array", "minItems": 1, "maxItems": 200, "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } },
+        "filterable": { "type": "array", "maxItems": 20, "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } }
+      }
+    },
+    "aggregateSide": {
+      "type": "object", "additionalProperties": false, "required": ["entity", "aggregation"],
+      "properties": {
+        "entity": { "$ref": "#/$defs/identifier" },
+        "aggregation": { "enum": ["count", "sum"] },
+        "field": { "$ref": "#/$defs/identifier" },
+        "filter": { "$ref": "#/$defs/condition" }
+      }
+    },
+    "datasetCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "left", "op", "right"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "description": { "type": "string", "maxLength": 500 },
+        "left": { "$ref": "#/$defs/aggregateSide" },
+        "op": { "enum": ["eq", "ne", "lt", "lte", "gt", "gte"] },
+        "right": {
+          "oneOf": [
+            { "$ref": "#/$defs/aggregateSide" },
+            { "type": "object", "additionalProperties": false, "required": ["value"], "properties": { "value": { "type": "number" } } }
+          ]
+        },
+        "tolerance": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

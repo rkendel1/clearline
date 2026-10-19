@@ -1,0 +1,8 @@
+node_modules/
+dist/
+dashboard/node_modules/
+dashboard/dist/
+.env
+*.log
+data/generated/
+test-results/*.tmp

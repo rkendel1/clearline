@@ -1,0 +1,96 @@
+// End-to-end lineage for one entity key: every version, the source row and
+// batch that produced it, the contract/transform versions, quality findings,
+// reconciliation outcome, which declared metrics it contributes to, and which
+// extracts exported it.
+
+import { withTenant, ident } from '../platform/db.js';
+import { notFound } from '../platform/errors.js';
+import { getActiveContract, getContractVersion } from '../contracts/registry.js';
+import { SENSITIVE } from '../contracts/types.js';
+import { table } from '../contracts/compile.js';
+import { conditionSql, Params } from './sql.js';
+import { mappedColumns } from '../transform/engine.js';
+
+export async function recordLineage(tenant: string, entity: string, key: string, canSeeSensitive: boolean) {
+  return withTenant(tenant, async (tx) => {
+    const active = await getActiveContract(tx, tenant);
+    if (!active) throw notFound('no active contract');
+    const c = active.document;
+    const e = c.entities[entity];
+    if (!e) throw notFound(`entity ${entity}`);
+    const sens = (f: string) => SENSITIVE.has(e.fields[f]?.sensitivity ?? 'internal');
+    const { rows: versions } = await tx.query(`SELECT * FROM ${table(tenant, entity)} WHERE "_key" = $1 ORDER BY "_record_id"`, [key]);
+    const quarantined = (await tx.query(`SELECT q.id, q.batch_id, q.category, q.status, q.errors, r.row_number FROM core.quarantine q JOIN core.raw_records r ON r.id = q.raw_record_id
+        WHERE q.tenant_id = $1 AND q.entity = $2 AND q.record_key = $3 ORDER BY q.id`, [tenant, entity, key])).rows;
+    if (!versions.length && !quarantined.length) throw notFound(`no ${entity} with key ${key}`);
+
+    const out = [];
+    for (const v of versions) {
+      const id = Number(v._record_id);
+      const values: Record<string, unknown> = {};
+      for (const f of Object.keys(e.fields)) values[f] = sens(f) && !canSeeSensitive ? '[redacted]' : v[f] instanceof Date ? (v[f] as Date).toISOString() : v[f];
+      const batch = (await tx.query(`SELECT b.id, b.source_id, b.format, b.payload_digest, b.arrival_at, b.source_reported_at, b.is_late, b.status, b.trust_status, b.trust_reasons,
+          b.quality_status, b.reconciliation_status, b.attempt_count, b.submitted_by FROM core.batches b WHERE b.id = $1`, [v._batch_id])).rows[0];
+      const cv = await getContractVersion(tx, Number(v._contract_version_id));
+      let source_row: unknown = null;
+      if (v._raw_record_id) {
+        const raw = (await tx.query(`SELECT id, row_number, payload, row_hash, disposition, purged_at FROM core.raw_records WHERE id = $1`, [v._raw_record_id])).rows[0];
+        if (raw) {
+          const src = cv.document.sources[batch.source_id];
+          const ent = cv.document.entities[src.entity];
+          const cols = mappedColumns(src);
+          const colSensitive = new Map<string, boolean>();
+          for (const m of src.mappings) for (const col of typeof m.from === 'string' ? [m.from] : m.from ?? []) colSensitive.set(col, SENSITIVE.has(ent.fields[m.target].sensitivity ?? 'internal') || !!colSensitive.get(col));
+          const payload = raw.payload ? Object.fromEntries(Object.entries(raw.payload as Record<string, unknown>).filter(([k]) => cols.has(k))
+            .map(([k, val]) => [k, colSensitive.get(k) && !canSeeSensitive ? '[redacted]' : val])) : null;
+          const findings = (await tx.query(`SELECT rule_id, severity, category, field, message FROM core.quality_findings WHERE raw_record_id = $1 ORDER BY id`, [raw.id])).rows;
+          source_row = { raw_record_id: Number(raw.id), row_number: raw.row_number, row_hash: raw.row_hash, disposition: raw.disposition,
+            payload_retained: !!raw.payload, purged_at: raw.purged_at, mapped_columns: payload, unmapped_columns_omitted: true, quality_findings: findings };
+        }
+      }
+      const duplicates = (await tx.query(`SELECT r.batch_id, r.row_number FROM core.raw_records r WHERE r.canonical_record_id = $1 AND r.disposition = 'duplicate' ORDER BY r.id`, [id])).rows;
+      const recon = (await tx.query(`SELECT check_id, status, explanation FROM core.reconciliation_results WHERE batch_id = $1 ORDER BY id`, [v._batch_id])).rows;
+      const contributes: { metric_id: string; included: boolean; reason: string }[] = [];
+      if (v._is_current) {
+        for (const m of c.outputs.metrics.filter((m) => m.entity === entity)) {
+          const p = new Params();
+          const cond = m.filter ? conditionSql(m.filter, e, p) : 'true';
+          const r = (await tx.query(`SELECT coalesce(${cond}, false) AS hit FROM ${table(tenant, entity)} r JOIN core.batches b ON b.id = r."_batch_id" WHERE r."_record_id" = ${p.add(id, 'bigint')}`, p.values)).rows[0];
+          const trusted = batch.trust_status === 'trusted';
+          contributes.push({ metric_id: m.id, included: r.hit && trusted, reason: !r.hit ? 'excluded by metric filter' : trusted ? 'included' : 'excluded: batch not trusted' });
+        }
+      }
+      const exports = (await tx.query(`SELECT id, extract_id, requested_by, created_at, as_of, content_sha256 FROM core.export_log
+          WHERE tenant_id = $1 AND record_refs @> $2::jsonb ORDER BY created_at`, [tenant, JSON.stringify([[entity, id]])])).rows;
+      let migration = null;
+      if (v._migration_id) migration = (await tx.query(`SELECT id, classification, approved_by, applied_at FROM core.contract_migrations WHERE id = $1`, [v._migration_id])).rows[0];
+      out.push({
+        record_id: id, is_current: v._is_current, is_late: v._is_late, loaded_at: v._loaded_at, values,
+        contract_version: cv.version, transform_version: v._transform_version, supersedes_record_id: v._supersedes_record_id ? Number(v._supersedes_record_id) : null,
+        migration, batch, source_row, duplicate_deliveries: duplicates, batch_reconciliation: recon, metric_contribution: contributes, exports,
+      });
+    }
+    return {
+      tenant, entity, key, active_contract_version: active.version,
+      current_record_id: out.find((v) => v.is_current)?.record_id ?? null,
+      versions: out,
+      quarantined_submissions: quarantined.map((q) => ({ ...q, errors: (q.errors as { rule_id: string; message: string }[]).map((x) => ({ rule_id: x.rule_id, message: x.message })) })),
+      ordering: e.correction,
+    };
+  });
+}
+
+export async function listRecords(tenant: string, entity: string, opts: { limit: number; offset: number; canSeeSensitive: boolean }) {
+  return withTenant(tenant, async (tx) => {
+    const active = await getActiveContract(tx, tenant);
+    if (!active) throw notFound('no active contract');
+    const e = active.document.entities[entity];
+    if (!e) throw notFound(`entity ${entity}`);
+    const fields = Object.keys(e.fields);
+    const { rows } = await tx.query(`SELECT r."_record_id", r."_key", r."_batch_id", b.trust_status AS "_trust_status", ${fields.map((f) => `r.${ident(f)}`).join(', ')}
+        FROM ${table(tenant, entity)} r JOIN core.batches b ON b.id = r."_batch_id" WHERE r."_is_current" ORDER BY r."_key" LIMIT $1 OFFSET $2`, [opts.limit, opts.offset]);
+    const total = (await tx.query(`SELECT count(*)::int AS n FROM ${table(tenant, entity)} WHERE "_is_current"`)).rows[0].n;
+    return { entity, total, limit: opts.limit, offset: opts.offset,
+      records: rows.map((r) => Object.fromEntries(Object.entries(r).map(([k, v]) => [k, SENSITIVE.has(e.fields[k]?.sensitivity ?? 'internal') && !opts.canSeeSensitive ? '[redacted]' : v instanceof Date ? v.toISOString() : v]))) };
+  });
+}

@@ -1,0 +1,149 @@
+{
+  "$schema": "../contract.schema.json",
+  "contract_id": "bluefin.rx",
+  "tenant": "bluefin",
+  "version": "1.0.0",
+  "description": "Bluefin Benefits: pharmacy benefit manager. Enrollees keyed by subscriber+dependent, integer plan ids, amounts delivered in implied cents, YYYYMMDD dates, last-adjudication-wins claims.",
+  "entities": {
+    "benefit_plan": {
+      "fields": {
+        "plan_id": { "type": "integer", "required": true, "nullable": false, "min": 1, "sensitivity": "public" },
+        "plan_label": { "type": "string", "required": true, "nullable": false, "max_length": 80, "sensitivity": "public" },
+        "tier_count": { "type": "integer", "required": true, "nullable": false, "min": 1, "max": 6, "sensitivity": "public" },
+        "effective_on": { "type": "date", "required": true, "nullable": false, "sensitivity": "public" },
+        "revision": { "type": "integer", "required": true, "nullable": false, "min": 1, "sensitivity": "internal" }
+      },
+      "key": ["plan_id"],
+      "correction": { "strategy": "supersede_by_order", "order_by": "revision" },
+      "freshness": { "max_age_hours": 2160 }
+    },
+    "enrollee": {
+      "fields": {
+        "enrollee_id": { "type": "string", "required": true, "nullable": false, "max_length": 24, "sensitivity": "internal", "description": "subscriber id + '-' + dependent sequence" },
+        "subscriber_id": { "type": "string", "required": true, "nullable": false, "format": "digits", "sensitivity": "internal" },
+        "dependent_seq": { "type": "integer", "required": true, "nullable": false, "min": 0, "max": 20, "sensitivity": "internal" },
+        "relationship": { "type": "enum", "values": ["SELF", "SPOUSE", "CHILD"], "required": true, "nullable": false, "sensitivity": "internal" },
+        "full_name": { "type": "string", "required": true, "nullable": false, "max_length": 120, "sensitivity": "pii" },
+        "birth_date": { "type": "date", "required": true, "nullable": false, "sensitivity": "phi" },
+        "email": { "type": "string", "max_length": 200, "sensitivity": "pii" },
+        "plan_id": { "type": "integer", "required": true, "nullable": false, "sensitivity": "public" },
+        "coverage_tier": { "type": "enum", "values": ["EE", "ES", "EC", "FAM"], "required": true, "nullable": false, "sensitivity": "internal" },
+        "effective_on": { "type": "date", "required": true, "nullable": false, "sensitivity": "internal" },
+        "terminated_on": { "type": "date", "sensitivity": "internal" },
+        "record_version": { "type": "integer", "required": true, "nullable": false, "min": 1, "sensitivity": "internal" }
+      },
+      "key": ["enrollee_id"],
+      "correction": { "strategy": "supersede_by_order", "order_by": "record_version" },
+      "relationships": [
+        { "id": "enrollee_plan", "field": "plan_id", "references": { "entity": "benefit_plan", "field": "plan_id" }, "on_missing": "quarantine" }
+      ],
+      "rules": [
+        { "id": "termination_after_effective", "description": "Termination cannot precede the effective date", "severity": "error", "assert": { "field": "terminated_on", "op": "gte", "other_field": "effective_on" } },
+        { "id": "self_is_dependent_zero", "description": "The subscriber (SELF) must be dependent sequence 0", "severity": "error", "when": { "field": "relationship", "op": "eq", "value": "SELF" }, "assert": { "field": "dependent_seq", "op": "eq", "value": 0 } },
+        { "id": "birth_not_future", "description": "Birth date cannot be after the file arrived", "severity": "error", "assert": { "field": "birth_date", "op": "not_after_arrival" } }
+      ],
+      "freshness": { "max_age_hours": 170 }
+    },
+    "rx_claim": {
+      "fields": {
+        "claim_number": { "type": "string", "required": true, "nullable": false, "format": "alnum", "max_length": 20, "sensitivity": "internal" },
+        "enrollee_id": { "type": "string", "required": true, "nullable": false, "sensitivity": "internal" },
+        "ndc": { "type": "string", "required": true, "nullable": false, "format": "ndc11", "sensitivity": "public" },
+        "fill_date": { "type": "date", "required": true, "nullable": false, "sensitivity": "internal" },
+        "days_supply": { "type": "integer", "required": true, "nullable": false, "min": 1, "max": 365, "sensitivity": "internal" },
+        "ingredient_cost": { "type": "decimal", "precision": 11, "scale": 2, "min": 0, "required": true, "nullable": false, "sensitivity": "internal" },
+        "dispense_fee": { "type": "decimal", "precision": 9, "scale": 2, "min": 0, "required": true, "nullable": false, "sensitivity": "internal" },
+        "total_cost": { "type": "decimal", "precision": 11, "scale": 2, "min": 0, "required": true, "nullable": false, "sensitivity": "internal" },
+        "copay": { "type": "decimal", "precision": 9, "scale": 2, "min": 0, "required": true, "nullable": false, "sensitivity": "internal" },
+        "plan_cost": { "type": "decimal", "precision": 11, "scale": 2, "required": true, "nullable": false, "sensitivity": "internal" },
+        "claim_state": { "type": "enum", "values": ["APPROVED", "REJECTED", "REVERSED"], "required": true, "nullable": false, "sensitivity": "internal" },
+        "adjudicated_at": { "type": "timestamp", "required": true, "nullable": false, "sensitivity": "internal" },
+        "pharmacy_id": { "type": "string", "max_length": 12, "sensitivity": "public" }
+      },
+      "key": ["claim_number"],
+      "correction": { "strategy": "supersede_by_order", "order_by": "adjudicated_at" },
+      "relationships": [
+        { "id": "claim_enrollee", "field": "enrollee_id", "references": { "entity": "enrollee", "field": "enrollee_id" }, "on_missing": "warn" }
+      ],
+      "rules": [
+        { "id": "copay_within_total", "description": "Copay cannot exceed total cost", "severity": "error", "assert": { "field": "copay", "op": "lte", "other_field": "total_cost" } },
+        { "id": "rejected_no_plan_cost", "description": "Rejected claims carry no plan cost", "severity": "error", "when": { "field": "claim_state", "op": "eq", "value": "REJECTED" }, "assert": { "field": "plan_cost", "op": "eq", "value": 0 } },
+        { "id": "fill_not_future", "description": "Fill date cannot be after the file arrived", "severity": "error", "assert": { "field": "fill_date", "op": "not_after_arrival" } },
+        { "id": "maintenance_supply", "description": "Days supply above 90 is unusual", "severity": "warning", "assert": { "field": "days_supply", "op": "lte", "value": 90 } }
+      ],
+      "freshness": { "max_age_hours": 26 }
+    }
+  },
+  "sources": {
+    "bf_plans_api": {
+      "entity": "benefit_plan",
+      "formats": ["json"],
+      "mappings": [
+        { "target": "plan_id", "from": "planId", "transforms": [{ "op": "parse_integer" }] },
+        { "target": "plan_label", "from": "label", "transforms": [{ "op": "trim" }] },
+        { "target": "tier_count", "from": "tiers", "transforms": [{ "op": "parse_integer" }] },
+        { "target": "effective_on", "from": "effectiveOn", "transforms": [{ "op": "parse_date", "format": "YYYY-MM-DD" }] },
+        { "target": "revision", "from": "rev", "transforms": [{ "op": "parse_integer" }] }
+      ]
+    },
+    "bf_enrollment_csv": {
+      "entity": "enrollee",
+      "formats": ["csv"],
+      "mappings": [
+        { "target": "enrollee_id", "from": ["SUB_ID", "DEP_SEQ"], "separator": "-" },
+        { "target": "subscriber_id", "from": "SUB_ID", "transforms": [{ "op": "trim" }] },
+        { "target": "dependent_seq", "from": "DEP_SEQ", "transforms": [{ "op": "parse_integer" }] },
+        { "target": "relationship", "from": "REL", "transforms": [{ "op": "trim" }, { "op": "map_values", "map": { "S": "SELF", "P": "SPOUSE", "C": "CHILD" }, "unmapped": "error" }] },
+        { "target": "full_name", "from": "NAME", "transforms": [{ "op": "trim" }] },
+        { "target": "birth_date", "from": "BIRTH_DT", "transforms": [{ "op": "parse_date", "format": "YYYYMMDD" }] },
+        { "target": "email", "from": "EMAIL", "transforms": [{ "op": "trim" }, { "op": "lower" }] },
+        { "target": "plan_id", "from": "PLAN_ID", "transforms": [{ "op": "parse_integer" }] },
+        { "target": "coverage_tier", "from": "TIER", "transforms": [{ "op": "trim" }, { "op": "upper" }] },
+        { "target": "effective_on", "from": "EFF_DT", "transforms": [{ "op": "parse_date", "format": "YYYYMMDD" }] },
+        { "target": "terminated_on", "from": "TERM_DT", "transforms": [{ "op": "parse_date", "format": "YYYYMMDD" }] },
+        { "target": "record_version", "from": "REC_VER", "transforms": [{ "op": "parse_integer" }] }
+      ],
+      "max_reject_rate": 0.02,
+      "sensitive_scan": { "unmapped_columns": "quarantine", "classified_fields": "quarantine" }
+    },
+    "bf_rx_claims_csv": {
+      "entity": "rx_claim",
+      "formats": ["csv"],
+      "mappings": [
+        { "target": "claim_number", "from": "CLAIM_NO", "transforms": [{ "op": "trim" }, { "op": "upper" }] },
+        { "target": "enrollee_id", "from": ["SUB_ID", "DEP_SEQ"], "separator": "-" },
+        { "target": "ndc", "from": "NDC", "transforms": [{ "op": "strip_non_digits" }, { "op": "left_pad", "length": 11, "char": "0" }] },
+        { "target": "fill_date", "from": "FILL_DT", "transforms": [{ "op": "parse_date", "format": "YYYYMMDD" }] },
+        { "target": "days_supply", "from": "DAYS", "transforms": [{ "op": "parse_integer" }] },
+        { "target": "ingredient_cost", "from": "ING_COST_C", "transforms": [{ "op": "parse_decimal", "implied_scale": 2 }] },
+        { "target": "dispense_fee", "from": "DISP_FEE_C", "transforms": [{ "op": "parse_decimal", "implied_scale": 2 }] },
+        { "target": "total_cost", "from": "TOTAL_C", "transforms": [{ "op": "parse_decimal", "implied_scale": 2 }] },
+        { "target": "copay", "from": "COPAY_C", "transforms": [{ "op": "parse_decimal", "implied_scale": 2 }] },
+        { "target": "plan_cost", "from": "PLAN_C", "transforms": [{ "op": "parse_decimal", "implied_scale": 2 }] },
+        { "target": "claim_state", "from": "STATE", "transforms": [{ "op": "trim" }, { "op": "map_values", "map": { "A": "APPROVED", "R": "REJECTED", "X": "REVERSED" }, "unmapped": "error" }] },
+        { "target": "adjudicated_at", "from": "ADJ_TS", "transforms": [{ "op": "parse_timestamp", "format": "iso8601" }] },
+        { "target": "pharmacy_id", "from": "PHARM_ID", "transforms": [{ "op": "trim" }] }
+      ],
+      "control_totals": { "sum_fields": ["plan_cost", "total_cost"] },
+      "max_reject_rate": 0.03,
+      "max_processing_seconds": 600,
+      "sensitive_scan": { "unmapped_columns": "quarantine", "classified_fields": "quarantine" }
+    }
+  },
+  "outputs": {
+    "metrics": [
+      { "id": "active_enrollees", "title": "Active enrollees", "description": "Enrollees with no termination date on their current record.", "entity": "enrollee", "aggregation": "count", "filter": { "field": "terminated_on", "op": "is_null" }, "unit": "count" },
+      { "id": "approved_rx_claims", "title": "Approved Rx claims", "description": "Current Rx claims in APPROVED state.", "entity": "rx_claim", "aggregation": "count", "filter": { "field": "claim_state", "op": "eq", "value": "APPROVED" }, "unit": "count" },
+      { "id": "plan_cost_total", "title": "Plan cost (approved)", "description": "Sum of plan_cost over current APPROVED Rx claims.", "entity": "rx_claim", "aggregation": "sum", "field": "plan_cost", "filter": { "field": "claim_state", "op": "eq", "value": "APPROVED" }, "unit": "usd" },
+      { "id": "avg_copay", "title": "Average copay", "description": "Mean copay over current APPROVED Rx claims.", "entity": "rx_claim", "aggregation": "avg", "field": "copay", "filter": { "field": "claim_state", "op": "eq", "value": "APPROVED" }, "unit": "usd" },
+      { "id": "utilizing_enrollees", "title": "Utilizing enrollees", "description": "Distinct enrollees with at least one current APPROVED Rx claim.", "entity": "rx_claim", "aggregation": "count_distinct", "field": "enrollee_id", "filter": { "field": "claim_state", "op": "eq", "value": "APPROVED" }, "unit": "count" }
+    ],
+    "extracts": [
+      { "id": "rx_claims", "title": "Rx claims (latest adjudication)", "entity": "rx_claim", "fields": ["claim_number", "enrollee_id", "ndc", "fill_date", "days_supply", "ingredient_cost", "dispense_fee", "total_cost", "copay", "plan_cost", "claim_state", "adjudicated_at"], "filterable": ["fill_date", "claim_state", "enrollee_id"] },
+      { "id": "enrollees", "title": "Enrollee roster", "entity": "enrollee", "fields": ["enrollee_id", "relationship", "full_name", "birth_date", "email", "plan_id", "coverage_tier", "effective_on", "terminated_on"], "filterable": ["plan_id", "coverage_tier"] }
+    ]
+  },
+  "dataset_checks": [
+    { "id": "plan_cost_within_total", "description": "Plan cost across trusted current Rx claims must not exceed total cost", "left": { "entity": "rx_claim", "aggregation": "sum", "field": "plan_cost" }, "op": "lte", "right": { "entity": "rx_claim", "aggregation": "sum", "field": "total_cost" } }
+  ]
+}

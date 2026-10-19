@@ -1,0 +1,87 @@
+{
+  "tenant": "northwind",
+  "generated_at": "2026-10-19T21:50:40.713Z",
+  "summary": [
+    {
+      "category": "business_rule",
+      "status": "open",
+      "n": 2
+    },
+    {
+      "category": "structural",
+      "status": "open",
+      "n": 1
+    }
+  ],
+  "quarantined": [
+    {
+      "id": "1",
+      "batch_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b",
+      "source_id": "nw_medical_claims_csv",
+      "entity": "claim",
+      "record_key": "C000000008",
+      "category": "structural",
+      "status": "open",
+      "source_row": 8,
+      "created_at": "2026-10-19T21:50:40.270Z",
+      "resolution": null,
+      "reasons": [
+        {
+          "rule_id": "type:service_date",
+          "message": "service_date: not a valid calendar date (YYYY-MM-DD) (got \"2026-02-30\")"
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "batch_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b",
+      "source_id": "nw_medical_claims_csv",
+      "entity": "claim",
+      "record_key": "C000000053",
+      "category": "business_rule",
+      "status": "open",
+      "source_row": 53,
+      "created_at": "2026-10-19T21:50:40.270Z",
+      "resolution": null,
+      "reasons": [
+        {
+          "rule_id": "rule:paid_le_billed",
+          "message": "Paid amount cannot exceed billed amount"
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "batch_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b",
+      "source_id": "nw_medical_claims_csv",
+      "entity": "claim",
+      "record_key": "C000000098",
+      "category": "business_rule",
+      "status": "open",
+      "source_row": 98,
+      "created_at": "2026-10-19T21:50:40.270Z",
+      "resolution": null,
+      "reasons": [
+        {
+          "rule_id": "rule:denied_zero_paid",
+          "message": "Denied claims must have zero paid amount"
+        }
+      ]
+    }
+  ],
+  "late_records": [],
+  "late_batches": [],
+  "orphaned_references": [],
+  "batches_requiring_review": [
+    {
+      "id": "0b1ce32f-3856-46d3-bc26-ed7fa00c4e30",
+      "source_id": "nw_medical_claims_csv",
+      "status": "completed",
+      "trust_status": "untrusted",
+      "trust_reasons": [
+        "reconciliation failed: source_control_count"
+      ],
+      "arrival_at": "2026-10-19T21:50:40.061Z"
+    }
+  ]
+}

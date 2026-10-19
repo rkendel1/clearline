@@ -1,0 +1,253 @@
+{
+  "tenant": "northwind",
+  "entity": "claim",
+  "key": "C000000104",
+  "active_contract_version": "1.0.0",
+  "current_record_id": 401,
+  "versions": [
+    {
+      "record_id": 101,
+      "is_current": false,
+      "is_late": false,
+      "loaded_at": "2026-10-19T21:50:40.330Z",
+      "values": {
+        "status": "DENIED",
+        "claim_id": "C000000104",
+        "member_id": "NW0000085",
+        "paid_amount": "0.00",
+        "provider_npi": "1566246728",
+        "service_date": "2026-06-11",
+        "billed_amount": "1653.87",
+        "received_date": "2026-07-07",
+        "allowed_amount": "1179.46",
+        "diagnosis_code": "[redacted]",
+        "procedure_code": "99213",
+        "adjudication_seq": "1"
+      },
+      "contract_version": "1.0.0",
+      "transform_version": "engine@1.0.0+contract@1.0.0#76f48fc3f1d3",
+      "supersedes_record_id": null,
+      "migration": null,
+      "batch": {
+        "id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b",
+        "source_id": "nw_medical_claims_csv",
+        "format": "csv",
+        "payload_digest": "9a1ce689b422f584237a8b2fb1bc3871d7735f0f6df1873325bd782cc28ac9c4",
+        "arrival_at": "2026-10-19T21:50:40.006Z",
+        "source_reported_at": "2026-09-30T02:00:00.000Z",
+        "is_late": false,
+        "status": "completed_with_exceptions",
+        "trust_status": "trusted",
+        "trust_reasons": [],
+        "quality_status": "warning",
+        "reconciliation_status": "passed",
+        "attempt_count": 1,
+        "submitted_by": "northwind-operator"
+      },
+      "source_row": {
+        "raw_record_id": 257,
+        "row_number": 104,
+        "row_hash": "8857d1f5147a9e14fe9feff7f371460fe07a5648a41cf2966b958811cbc0b013",
+        "disposition": "accepted",
+        "payload_retained": true,
+        "purged_at": null,
+        "mapped_columns": {
+          "DX_CD": "[redacted]",
+          "CLM_ID": "C000000104",
+          "MBR_ID": "NW0000085",
+          "SVC_DT": "2026-06-11",
+          "ADJ_SEQ": "1",
+          "PROC_CD": "99213",
+          "RCVD_DT": "2026-07-07",
+          "PAID_AMT": "0.00",
+          "BILLED_AMT": "1653.87",
+          "CLM_STATUS": "D",
+          "ALLOWED_AMT": "1179.46",
+          "RENDERING_NPI": "1566246728"
+        },
+        "unmapped_columns_omitted": true,
+        "quality_findings": []
+      },
+      "duplicate_deliveries": [],
+      "batch_reconciliation": [
+        {
+          "check_id": "row_accounting",
+          "status": "passed",
+          "explanation": "All 400 received rows are accounted for: 397 accepted, 3 quarantined, 0 exact duplicates."
+        },
+        {
+          "check_id": "target_row_count",
+          "status": "passed",
+          "explanation": "Target table holds exactly the 397 versions this batch accepted."
+        },
+        {
+          "check_id": "source_control_count",
+          "status": "passed",
+          "explanation": "Received row count matches the sender's control count (400)."
+        },
+        {
+          "check_id": "financial_accounting:paid_amount",
+          "status": "passed",
+          "explanation": "paid_amount: 188812.08 accepted into canonical data, 1723.75 held in quarantine, 0 in exact duplicates (no effect)."
+        },
+        {
+          "check_id": "target_sum:paid_amount",
+          "status": "passed",
+          "explanation": "Persisted paid_amount total equals the accepted total (188812.08)."
+        },
+        {
+          "check_id": "source_control_sum:billed_amount",
+          "status": "passed",
+          "explanation": "Sum of billed_amount across received rows matches the sender's control total (493709.51)."
+        },
+        {
+          "check_id": "financial_accounting:billed_amount",
+          "status": "passed",
+          "explanation": "billed_amount: 489755.37 accepted into canonical data, 3954.14 held in quarantine, 0 in exact duplicates (no effect)."
+        },
+        {
+          "check_id": "target_sum:billed_amount",
+          "status": "passed",
+          "explanation": "Persisted billed_amount total equals the accepted total (489755.37)."
+        }
+      ],
+      "metric_contribution": [],
+      "exports": []
+    },
+    {
+      "record_id": 401,
+      "is_current": true,
+      "is_late": false,
+      "loaded_at": "2026-10-19T21:50:40.400Z",
+      "values": {
+        "status": "PAID",
+        "claim_id": "C000000104",
+        "member_id": "NW0000085",
+        "paid_amount": "589.73",
+        "provider_npi": "1566246728",
+        "service_date": "2026-06-11",
+        "billed_amount": "1653.87",
+        "received_date": "2026-07-07",
+        "allowed_amount": "1179.46",
+        "diagnosis_code": "[redacted]",
+        "procedure_code": "99213",
+        "adjudication_seq": "2"
+      },
+      "contract_version": "1.0.0",
+      "transform_version": "engine@1.0.0+contract@1.0.0#76f48fc3f1d3",
+      "supersedes_record_id": null,
+      "migration": null,
+      "batch": {
+        "id": "503e2c14-0fe2-47b5-9e56-6d46dc07cdbf",
+        "source_id": "nw_medical_claims_csv",
+        "format": "csv",
+        "payload_digest": "1ab751f2ffd94ae600302c07382d073292edb1d82ba0c8e3abbc3d3517b531ab",
+        "arrival_at": "2026-10-19T21:50:40.045Z",
+        "source_reported_at": "2026-10-01T02:00:00.000Z",
+        "is_late": false,
+        "status": "completed",
+        "trust_status": "trusted",
+        "trust_reasons": [],
+        "quality_status": "passed",
+        "reconciliation_status": "passed",
+        "attempt_count": 1,
+        "submitted_by": "northwind-operator"
+      },
+      "source_row": {
+        "raw_record_id": 557,
+        "row_number": 4,
+        "row_hash": "387a0c899be82895dad8b14be021bae26db129edb2532977e717aebcc6ad0a76",
+        "disposition": "accepted",
+        "payload_retained": true,
+        "purged_at": null,
+        "mapped_columns": {
+          "DX_CD": "[redacted]",
+          "CLM_ID": "C000000104",
+          "MBR_ID": "NW0000085",
+          "SVC_DT": "2026-06-11",
+          "ADJ_SEQ": "2",
+          "PROC_CD": "99213",
+          "RCVD_DT": "2026-07-07",
+          "PAID_AMT": "589.73",
+          "BILLED_AMT": "1653.87",
+          "CLM_STATUS": "P",
+          "ALLOWED_AMT": "1179.46",
+          "RENDERING_NPI": "1566246728"
+        },
+        "unmapped_columns_omitted": true,
+        "quality_findings": []
+      },
+      "duplicate_deliveries": [],
+      "batch_reconciliation": [
+        {
+          "check_id": "row_accounting",
+          "status": "passed",
+          "explanation": "All 25 received rows are accounted for: 25 accepted, 0 quarantined, 0 exact duplicates."
+        },
+        {
+          "check_id": "target_row_count",
+          "status": "passed",
+          "explanation": "Target table holds exactly the 25 versions this batch accepted."
+        },
+        {
+          "check_id": "source_control_count",
+          "status": "passed",
+          "explanation": "Received row count matches the sender's control count (25)."
+        },
+        {
+          "check_id": "financial_accounting:paid_amount",
+          "status": "passed",
+          "explanation": "paid_amount: 12017.66 accepted into canonical data, 0 held in quarantine, 0 in exact duplicates (no effect)."
+        },
+        {
+          "check_id": "target_sum:paid_amount",
+          "status": "passed",
+          "explanation": "Persisted paid_amount total equals the accepted total (12017.66)."
+        },
+        {
+          "check_id": "financial_accounting:billed_amount",
+          "status": "passed",
+          "explanation": "billed_amount: 35374.30 accepted into canonical data, 0 held in quarantine, 0 in exact duplicates (no effect)."
+        },
+        {
+          "check_id": "target_sum:billed_amount",
+          "status": "passed",
+          "explanation": "Persisted billed_amount total equals the accepted total (35374.30)."
+        }
+      ],
+      "metric_contribution": [
+        {
+          "metric_id": "claims_total",
+          "included": true,
+          "reason": "included"
+        },
+        {
+          "metric_id": "paid_claims",
+          "included": true,
+          "reason": "included"
+        },
+        {
+          "metric_id": "denied_claims",
+          "included": false,
+          "reason": "excluded by metric filter"
+        },
+        {
+          "metric_id": "total_paid",
+          "included": true,
+          "reason": "included"
+        },
+        {
+          "metric_id": "total_billed",
+          "included": true,
+          "reason": "included"
+        }
+      ],
+      "exports": []
+    }
+  ],
+  "quarantined_submissions": [],
+  "ordering": {
+    "order_by": "adjudication_seq",
+    "strategy": "supersede_by_order"
+  }
+}

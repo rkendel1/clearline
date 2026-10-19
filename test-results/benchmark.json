@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-10-19T21:50:09.165Z",
+  "environment": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+    "cpu_count": 2,
+    "memory_gb": 7.8,
+    "os": "linux 6.18.44-fc-v139",
+    "node": "v22.22.0",
+    "postgres": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)",
+    "postgres_settings": {
+      "fsync": "on",
+      "max_wal_size": "1024",
+      "shared_buffers": "16384",
+      "synchronous_commit": "on",
+      "work_mem": "4096"
+    },
+    "database_location": "same host as the application (loopback)",
+    "database_size_after": "533 MB"
+  },
+  "configuration": {
+    "DB_POOL_SIZE": "10 (default)",
+    "BATCH_TIMEOUT_MS": "600000 (default)",
+    "contract": "northwind 1.0.0 / bluefin 1.0.0",
+    "path": "HTTP API (CSV upload) -> PostgreSQL queue -> worker transaction"
+  },
+  "dataset": {
+    "reference": "5000 northwind members, 2000 bluefin subscribers (+dependents)",
+    "single_worker_batches": [
+      10000,
+      50000,
+      100000
+    ],
+    "defect_rate_single": 0.01,
+    "parallel_batches": "8 x 25000 rows, alternating tenants"
+  },
+  "single_worker": [
+    {
+      "rows": 10000,
+      "bytes": 917061,
+      "submit_ms": 456,
+      "process_ms": 1193,
+      "rows_per_s_processing": 8384,
+      "rows_per_s_end_to_end": 6064,
+      "status": "completed_with_exceptions",
+      "trust": "trusted",
+      "accepted": 9900,
+      "quarantined": 100
+    },
+    {
+      "rows": 50000,
+      "bytes": 4584577,
+      "submit_ms": 2646,
+      "process_ms": 6525,
+      "rows_per_s_processing": 7663,
+      "rows_per_s_end_to_end": 5452,
+      "status": "completed_with_exceptions",
+      "trust": "trusted",
+      "accepted": 49500,
+      "quarantined": 500
+    },
+    {
+      "rows": 100000,
+      "bytes": 9169336,
+      "submit_ms": 4580,
+      "process_ms": 11767,
+      "rows_per_s_processing": 8498,
+      "rows_per_s_end_to_end": 6117,
+      "status": "completed_with_exceptions",
+      "trust": "trusted",
+      "accepted": 99000,
+      "quarantined": 1000
+    }
+  ],
+  "parallel": {
+    "workers": 4,
+    "batches": 8,
+    "rows_per_batch": 25000,
+    "total_rows": 200000,
+    "submit_wall_ms": 19241,
+    "wall_ms": 24616,
+    "rows_per_s": 8125,
+    "batch_e2e_s_p50": 1.84,
+    "batch_e2e_s_max": 2.35,
+    "failed_batches": 0,
+    "failure_rate": 0,
+    "all_trusted": true
+  }
+}

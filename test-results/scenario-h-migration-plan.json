@@ -1,0 +1,94 @@
+{
+  "from_version": "1.0.0",
+  "to_version": "2.0.0",
+  "classification": "requires_approval",
+  "changes": [
+    {
+      "entity": "claim",
+      "field": "status",
+      "kind": "enum_values_added",
+      "classification": "compatible",
+      "description": "status: values added [PENDING]",
+      "action": "none"
+    },
+    {
+      "entity": "claim",
+      "field": "status",
+      "kind": "enum_values_remapped",
+      "classification": "breaking",
+      "description": "status: values [PENDED] replaced",
+      "action": "existing current records get new versions with mapped values (PENDED->PENDING)"
+    },
+    {
+      "entity": "claim",
+      "field": "line_of_business",
+      "kind": "field_added_required",
+      "classification": "breaking",
+      "description": "non-nullable field line_of_business (enum) added",
+      "action": "add column; existing current records get new versions with line_of_business = \"COMMERCIAL\" (declared backfill)"
+    },
+    {
+      "entity": "claim",
+      "field": "procedure_code",
+      "kind": "field_removed",
+      "classification": "breaking",
+      "description": "field procedure_code removed",
+      "action": "column and historical values retained; field no longer populated, validated or served"
+    },
+    {
+      "kind": "sources_changed",
+      "classification": "compatible",
+      "description": "source mappings/transform declarations changed",
+      "action": "new batches use the new transform version; existing records keep the transform version that produced them"
+    },
+    {
+      "kind": "outputs_changed",
+      "classification": "compatible",
+      "description": "declared metrics/extracts changed",
+      "action": "reporting definitions regenerated"
+    }
+  ],
+  "ddl": [
+    "ALTER TABLE \"t_northwind\".\"claim\" ADD COLUMN IF NOT EXISTS \"line_of_business\" text"
+  ],
+  "data_ops": [
+    {
+      "type": "value_map",
+      "entity": "claim",
+      "field": "status",
+      "value_map": {
+        "PENDED": "PENDING"
+      }
+    },
+    {
+      "type": "backfill",
+      "entity": "claim",
+      "field": "line_of_business",
+      "backfill_value": "COMMERCIAL"
+    }
+  ],
+  "rejected_reasons": [],
+  "rollback": [
+    "Rollback is available until any batch is processed under the new version.",
+    "Records created by data operations (tagged _migration_id) are deleted and the versions they superseded become current again.",
+    "The previous contract version is re-activated; added columns are retained (nullable) and simply unused, so no data is dropped."
+  ],
+  "notes": [
+    "Data operations never update rows in place: they write new record versions tagged with the migration id, so prior versions keep their original meaning and contract version."
+  ],
+  "impact": {
+    "plan": {
+      "current_rows": 3
+    },
+    "claim": {
+      "current_rows": 300,
+      "affected_rows": 347
+    },
+    "member": {
+      "current_rows": 80
+    },
+    "pharmacy_fill": {
+      "current_rows": 0
+    }
+  }
+}

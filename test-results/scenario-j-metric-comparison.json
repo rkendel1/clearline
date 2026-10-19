@@ -1,0 +1,114 @@
+[
+  {
+    "tenant": "northwind",
+    "metric": "active_members",
+    "api": "99",
+    "hand_sql": "99",
+    "truth": "99",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "members_total",
+    "api": "150",
+    "hand_sql": "150",
+    "truth": "150",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "claims_total",
+    "api": "397",
+    "hand_sql": "397",
+    "truth": "397",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "paid_claims",
+    "api": "279",
+    "hand_sql": "279",
+    "truth": "279",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "denied_claims",
+    "api": "46",
+    "hand_sql": "46",
+    "truth": "46",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "total_paid",
+    "api": "189670.45",
+    "hand_sql": "189670.45",
+    "truth": "189670.45",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "total_billed",
+    "api": "489755.37",
+    "hand_sql": "489755.37",
+    "truth": "489755.37",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "rx_fills",
+    "api": "120",
+    "hand_sql": "120",
+    "truth": "120",
+    "match": true
+  },
+  {
+    "tenant": "northwind",
+    "metric": "rx_plan_paid",
+    "api": "31177.27",
+    "hand_sql": "31177.27",
+    "truth": "31177.27",
+    "match": true
+  },
+  {
+    "tenant": "bluefin",
+    "metric": "active_enrollees",
+    "api": "105",
+    "hand_sql": "105",
+    "truth": "105",
+    "match": true
+  },
+  {
+    "tenant": "bluefin",
+    "metric": "approved_rx_claims",
+    "api": "254",
+    "hand_sql": "254",
+    "truth": "254",
+    "match": true
+  },
+  {
+    "tenant": "bluefin",
+    "metric": "plan_cost_total",
+    "api": "109950.70",
+    "hand_sql": "109950.70",
+    "truth": "109950.70",
+    "match": true
+  },
+  {
+    "tenant": "bluefin",
+    "metric": "avg_copay",
+    "api": "21.2509",
+    "hand_sql": "21.2509",
+    "truth": "21.2509",
+    "match": true
+  },
+  {
+    "tenant": "bluefin",
+    "metric": "utilizing_enrollees",
+    "api": "95",
+    "hand_sql": "95",
+    "truth": "95",
+    "match": true
+  }
+]

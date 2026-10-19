@@ -1,0 +1,85 @@
+# Local, reproducible Clearline stack (synthetic data only).
+#   docker compose up -d                 # postgres, migrations, demo seed, api, worker
+#   docker compose run --rm demo         # load the reference dataset and print results
+#   open http://localhost:8080           # dashboard (tokens in README)
+#   docker compose down -v               # stop and delete all data
+#
+# Secrets: values below are LOCAL DEMO credentials. In any shared environment
+# supply DATABASE_URL / POSTGRES_PASSWORD from a secret store (see docs/deployment.md).
+
+x-app: &app
+  build:
+    context: .
+    args:
+      NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
+  image: clearline:local
+  environment: &app-env
+    DATABASE_URL: postgres://clearline:${POSTGRES_PASSWORD:-clearline-local-only}@db:5432/clearline
+    LOG_LEVEL: info
+    DB_POOL_SIZE: "10"
+    STATEMENT_TIMEOUT_MS: "60000"
+    BATCH_TIMEOUT_MS: "600000"
+    WORKER_LEASE_SECONDS: "120"
+    SHUTDOWN_GRACE_MS: "20000"
+    MAX_UPLOAD_BYTES: "52428800"
+    MAX_ROWS_PER_BATCH: "500000"
+  restart: unless-stopped
+
+services:
+  db:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_USER: clearline
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clearline-local-only}
+      POSTGRES_DB: clearline
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:${DB_HOST_PORT:-5432}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clearline -d clearline"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    deploy: { resources: { limits: { cpus: "2", memory: 1g } } }
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command: ["node", "dist/src/cli.js", "migrate"]
+    depends_on: { db: { condition: service_healthy } }
+    restart: "no"
+
+  seed:
+    <<: *app
+    # Creates the two demo tenants, their well-known demo tokens and v1 contracts.
+    # Refuses to run when NODE_ENV=production, so it is explicitly development here.
+    environment: { <<: *app-env, NODE_ENV: development }
+    command: ["node", "dist/scripts/seed.js"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: "no"
+
+  api:
+    <<: *app
+    command: ["node", "dist/src/main.js"]
+    ports: ["127.0.0.1:${API_HOST_PORT:-8080}:8080"]
+    depends_on: { seed: { condition: service_completed_successfully } }
+    stop_grace_period: 30s
+    deploy: { resources: { limits: { cpus: "1", memory: 512m } } }
+
+  worker:
+    <<: *app
+    command: ["node", "dist/src/worker-main.js"]
+    healthcheck: { disable: true }
+    depends_on: { seed: { condition: service_completed_successfully } }
+    stop_grace_period: 30s
+    deploy: { replicas: 1, resources: { limits: { cpus: "1", memory: 768m } } }
+
+  demo:
+    <<: *app
+    profiles: [demo]
+    environment: { <<: *app-env, CLEARLINE_URL: "http://api:8080", DASHBOARD_URL: "http://localhost:${API_HOST_PORT:-8080}" }
+    command: ["node", "dist/scripts/demo.js"]
+    depends_on: { api: { condition: service_healthy } }
+    restart: "no"
+
+volumes:
+  pgdata:

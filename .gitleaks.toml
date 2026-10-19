@@ -1,0 +1,15 @@
+# Secret scanning configuration. The only credentials in this repository are
+# well-known LOCAL DEMO values (seeded tokens cl_dev_*, compose passwords
+# *-local-only, test-only BI passwords). They are allow-listed explicitly so any
+# other secret still fails the scan.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented local demo credentials"
+regexes = [
+  '''cl_dev_[a-z_]+''',
+  '''clearline-local-only''',
+  '''bi-test|bi-j''',
+  '''postgres://clearline:clearline@''',
+]
