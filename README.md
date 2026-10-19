@@ -6,7 +6,7 @@ Clearline ingests eligibility, claims, pharmacy and plan data from independent s
 
 > Data contracts define the meaning of the data; the platform enforces the contracts; execution evidence establishes what actually happened.
 
-The test suite proves more than that data moved. Every published number is checked against independent SQL and the generator's own answers, a batch that ran is never confused with one that can be trusted, and failures leave no partial effects.
+The tests check more than that data moved. Every declared business metric and the operations totals are compared with independent SQL, the generator's own answers and the rendered dashboard. A batch that ran is never confused with one that can be trusted, and failures leave no partial effects. A mutation suite plants 14 realistic defects and confirms the tests catch every one.
 
 ![Operations dashboard](docs/demo/overview.png)
 
@@ -27,11 +27,11 @@ Sign in with a demo token (seeded only outside production, synthetic tenants onl
 | `cl_dev_northwind_operator` | northwind | operator | submit, replay, see quarantine and lineage (redacted) |
 | `cl_dev_northwind_reporter` | northwind | reporter | reports and redacted extracts |
 | `cl_dev_northwind_admin` | northwind | admin | everything in the tenant, incl. publishing contracts and sensitive exports |
-| `cl_dev_northwind_approver` | northwind | admin | a *second* admin, to approve breaking contract changes |
+| `cl_dev_northwind_approver` | northwind | approver | approve or reject breaking contract changes; **no tenant data** (issued by the platform admin only) |
 | `cl_dev_bluefin_*` | bluefin | same four roles | |
-| `cl_dev_platform_admin` | none | platform admin | create tenants, issue first tokens; **no tenant data** |
+| `cl_dev_platform_admin` | none | platform admin | create tenants, issue each tenant's first admin and its approvers; **no tenant data** |
 
-`docker compose run --rm demo node dist/scripts/demo.js --with-migration` also publishes Northwind contract 2.0.0 (a breaking change), so you can review and approve it on the Contracts page as the approver. Reset everything with `docker compose down -v`.
+`docker compose run --rm demo node dist/scripts/demo.js --with-migration` also publishes Northwind contract 2.0.0 (a breaking change), so you can review and approve it on the Contracts page, signed in as the approver. Reset everything with `docker compose down -v`.
 
 A 65-second recorded walkthrough of normal operation and four failure scenarios is in [`docs/demo/clearline-demo.mp4`](docs/demo/clearline-demo.mp4) ([transcript](docs/demo/README.md)).
 
@@ -56,9 +56,10 @@ Tests create and drop their own databases (`clearline_test`, …). Set `PG_ADMIN
 ```sh
 npm run typecheck
 npm run test:unit          # transforms, decimal math, contract validation, migration planning, engine, adapters, reconciliation
-npm run test:integration   # HTTP API: health, role matrix, provisioning, rejection, failure+replay, quarantine, erasure, retention, token revocation
+npm run test:integration   # HTTP API: health, roles, platform-admin limits, rejection, failure+replay, quarantine, erasure, retention, tokens, audit, scope guard
 npm run test:scenarios     # A–J against a real database and worker; writes test-results/evidence.md
 npm run dashboard:build && npm run test:e2e   # Chromium: dashboard numbers vs ground truth and SQL
+npm run test:mutation      # plant 14 defects in a temp copy; every one must be caught
 ```
 
 | Scenario | Test | What is verified |
@@ -70,8 +71,8 @@ npm run dashboard:build && npm run test:e2e   # Chromium: dashboard numbers vs g
 | E Late data and corrections | `e-late-data-corrections.test.ts` | supersession, late versions kept as history, conflicts quarantined, `as_of` vs current results |
 | F Interrupted processing | `f-interrupted-processing.test.ts` | SIGKILL mid-transaction → nothing visible → recovered; SIGTERM → abort, re-queue, exit 0 |
 | G Privacy violation | `g-privacy-violation.test.ts` | cross-tenant and sensitive-export attempts denied and audited at API and SQL layers |
-| H Contract evolution | `h-contract-evolution.test.ts` | unsafe change rejected; breaking change planned, self-approval refused, approved, applied as new versions; rollback and its limit |
-| I Reconciliation failure | `i-reconciliation-failure.test.ts` | in-transit loss, out-of-band drift and missing references detected and explained; trust revoked, then restored after repair |
+| H Contract evolution | `h-contract-evolution.test.ts` | unsafe change rejected; breaking change planned, admin approval refused, approver applies it as new versions; rollback and its limit; widening applied; queued batches across migrations; drift in migration rows |
+| I Reconciliation failure | `i-reconciliation-failure.test.ts` | in-transit loss, out-of-band drift and missing references detected and explained; metrics qualified; trust restored after repair; complete resend re-establishes data; untrusted corrections never displace trusted values |
 | J Reporting correctness | `j-reporting-correctness.test.ts`, `test/e2e/dashboard.test.ts` | 14 metrics: API = hand-written SQL = ground truth = dashboard; extracts and BI views agree |
 
 The latest recorded results are in [`docs/test-results.md`](docs/test-results.md) and `test-results/`.

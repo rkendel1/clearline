@@ -11,3 +11,4 @@
 | [0007](0007-versioned-records.md) | Versioned canonical records; corrections and migrations never update in place | Accepted |
 | [0008](0008-defence-in-depth-isolation.md) | Tenant isolation in the application *and* the database | Accepted, with known gap |
 | [0009](0009-typescript-only.md) | TypeScript for processing too (no Python service) | Accepted |
+| [0010](0010-separation-of-duties.md) | Separation of duties: approver role, bootstrap-only platform admin | Accepted (after independent review) |

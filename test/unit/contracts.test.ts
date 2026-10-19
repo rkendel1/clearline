@@ -53,6 +53,7 @@ test('semantic validation catches cross-reference and type errors with precise p
     ['required field unmapped', (c) => { c.sources.bf_rx_claims_csv.mappings = c.sources.bf_rx_claims_csv.mappings.filter((m: any) => m.target !== 'claim_number'); }, 'required field "rx_claim.claim_number" has no mapping'],
     ['decimal filterable', (c) => { c.outputs.extracts[0].filterable = ['plan_cost']; }, 'is not filterable'],
     ['order_by on decimal', (c) => { c.entities.rx_claim.correction = { strategy: 'supersede_by_order', order_by: 'plan_cost' }; }, 'order_by must be an integer, date or timestamp field'],
+    ['sensitive field filterable', (c) => { c.outputs.extracts[1].filterable = ['birth_date']; }, 'would let callers infer redacted values'],
   ];
   for (const [name, fn, want] of cases) {
     const got = issues(mutate(fn));
@@ -85,6 +86,21 @@ test('migration plan classifies changes and refuses unsafe ones', () => {
 
   const widen = structuredClone(v1); widen.version = '1.2.0'; widen.entities.claim.fields.paid_amount.precision = 16;
   assert.equal(planMigration('northwind', v1, widen).classification, 'compatible');
+
+  // Weakening a trust or privacy control at the source level needs approval.
+  const lax = structuredClone(v1); lax.version = '1.3.0';
+  lax.sources.nw_medical_claims_csv.max_reject_rate = 0.5;
+  lax.sources.nw_medical_claims_csv.control_totals = { sum_fields: ['billed_amount'] };
+  lax.sources.nw_medical_claims_csv.sensitive_scan = { unmapped_columns: 'warn', classified_fields: 'warn' };
+  const pl = planMigration('northwind', v1, lax);
+  assert.deepEqual(pl.changes.filter((c) => c.classification === 'breaking').map((c) => c.kind).sort(),
+    ['control_totals_removed', 'reject_threshold_raised', 'sensitive_scan_weakened', 'sensitive_scan_weakened']);
+  assert.ok(pl.rejected_reasons.some((r) => /major version/.test(r)), 'so it also needs a major version');
+  const strict = structuredClone(v1); strict.version = '1.4.0'; strict.sources.nw_medical_claims_csv.max_reject_rate = 0.01;
+  strict.entities.claim.fields.received_date.nullable = true; strict.entities.claim.fields.received_date.required = false;
+  const ps = planMigration('northwind', v1, strict);
+  assert.equal(ps.classification, 'compatible');
+  assert.deepEqual(ps.changes.map((c) => c.kind).sort(), ['made_nullable', 'made_optional', 'reject_threshold_lowered']);
 
   const unhide = structuredClone(v1); unhide.version = '2.0.0'; unhide.entities.member.fields.ssn.sensitivity = 'internal';
   const pu = planMigration('northwind', v1, unhide);

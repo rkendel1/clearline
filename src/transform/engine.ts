@@ -43,6 +43,9 @@ export function primaryCategory(errors: Finding[]): Category {
 function show(f: FieldDef | undefined, v: unknown): string {
   if (!f || SENSITIVE.has(f.sensitivity ?? 'internal')) return '[redacted]';
   const s = String(v);
+  // A non-sensitive field can still carry sensitive data by mistake (an SSN in a ZIP column): never echo it.
+  const kind = detectSensitiveValue(s);
+  if (kind) return `[redacted: resembles ${kind}]`;
   return `"${s.length > 40 ? s.slice(0, 40) + '…' : s}"`;
 }
 

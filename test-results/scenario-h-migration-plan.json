@@ -36,9 +36,9 @@
       "action": "column and historical values retained; field no longer populated, validated or served"
     },
     {
-      "kind": "sources_changed",
+      "kind": "source_processing_changed",
       "classification": "compatible",
-      "description": "source mappings/transform declarations changed",
+      "description": "nw_medical_claims_csv: mappings, formats or processing limits changed",
       "action": "new batches use the new transform version; existing records keep the transform version that produced them"
     },
     {
@@ -76,13 +76,48 @@
   "notes": [
     "Data operations never update rows in place: they write new record versions tagged with the migration id, so prior versions keep their original meaning and contract version."
   ],
+  "view_ddl": [
+    "-- all generated views in this tenant schema are dropped, then:",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"current_plan\"",
+    "CREATE VIEW \"t_northwind\".\"current_plan\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"plan_code\", r.\"plan_name\", r.\"plan_type\", r.\"deductible\", r.\"oop_max\", r.\"effective_date\", r.\"termination_date\", r.\"updated_at\" FROM \"t_northwind\".\"plan\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_plan\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_plan\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"plan_code\", r.\"plan_name\", r.\"plan_type\", r.\"deductible\", r.\"oop_max\", r.\"effective_date\", r.\"termination_date\", r.\"updated_at\" FROM \"t_northwind\".\"plan\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_plan\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_trusted_plan\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_trusted_plan\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"plan_code\", r.\"plan_name\", r.\"plan_type\", r.\"deductible\", r.\"oop_max\", r.\"effective_date\", r.\"termination_date\", r.\"updated_at\"\n      FROM (SELECT DISTINCT ON (x.\"_key\") x.* FROM \"t_northwind\".\"plan\" x JOIN core.batches xb ON xb.id = x.\"_batch_id\" WHERE NOT x.\"_is_late\" AND xb.trust_status = 'trusted' ORDER BY x.\"_key\", x.\"_record_id\" DESC) r\n      JOIN core.batches b ON b.id = r.\"_batch_id\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_trusted_plan\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"current_member\"",
+    "CREATE VIEW \"t_northwind\".\"current_member\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"member_id\", r.\"ssn\", r.\"first_name\", r.\"last_name\", r.\"date_of_birth\", r.\"gender\", r.\"zip\", r.\"plan_code\", r.\"coverage_start\", r.\"coverage_end\", r.\"status\", r.\"updated_at\" FROM \"t_northwind\".\"member\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_member\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_member\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"member_id\", r.\"zip\", r.\"plan_code\", r.\"coverage_start\", r.\"coverage_end\", r.\"status\", r.\"updated_at\" FROM \"t_northwind\".\"member\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_member\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_trusted_member\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_trusted_member\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"member_id\", r.\"zip\", r.\"plan_code\", r.\"coverage_start\", r.\"coverage_end\", r.\"status\", r.\"updated_at\"\n      FROM (SELECT DISTINCT ON (x.\"_key\") x.* FROM \"t_northwind\".\"member\" x JOIN core.batches xb ON xb.id = x.\"_batch_id\" WHERE NOT x.\"_is_late\" AND xb.trust_status = 'trusted' ORDER BY x.\"_key\", x.\"_record_id\" DESC) r\n      JOIN core.batches b ON b.id = r.\"_batch_id\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_trusted_member\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"current_claim\"",
+    "CREATE VIEW \"t_northwind\".\"current_claim\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"claim_id\", r.\"member_id\", r.\"provider_npi\", r.\"service_date\", r.\"received_date\", r.\"diagnosis_code\", r.\"billed_amount\", r.\"allowed_amount\", r.\"paid_amount\", r.\"status\", r.\"adjudication_seq\", r.\"line_of_business\" FROM \"t_northwind\".\"claim\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_claim\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_claim\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"claim_id\", r.\"member_id\", r.\"provider_npi\", r.\"service_date\", r.\"received_date\", r.\"billed_amount\", r.\"allowed_amount\", r.\"paid_amount\", r.\"status\", r.\"adjudication_seq\", r.\"line_of_business\" FROM \"t_northwind\".\"claim\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_claim\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_trusted_claim\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_trusted_claim\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"claim_id\", r.\"member_id\", r.\"provider_npi\", r.\"service_date\", r.\"received_date\", r.\"billed_amount\", r.\"allowed_amount\", r.\"paid_amount\", r.\"status\", r.\"adjudication_seq\", r.\"line_of_business\"\n      FROM (SELECT DISTINCT ON (x.\"_key\") x.* FROM \"t_northwind\".\"claim\" x JOIN core.batches xb ON xb.id = x.\"_batch_id\" WHERE NOT x.\"_is_late\" AND xb.trust_status = 'trusted' ORDER BY x.\"_key\", x.\"_record_id\" DESC) r\n      JOIN core.batches b ON b.id = r.\"_batch_id\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_trusted_claim\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"current_pharmacy_fill\"",
+    "CREATE VIEW \"t_northwind\".\"current_pharmacy_fill\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"fill_id\", r.\"member_id\", r.\"ndc\", r.\"fill_date\", r.\"days_supply\", r.\"quantity\", r.\"ingredient_cost\", r.\"dispensing_fee\", r.\"plan_paid\", r.\"member_paid\", r.\"status\", r.\"pharmacy_npi\", r.\"updated_at\" FROM \"t_northwind\".\"pharmacy_fill\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_pharmacy_fill\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_pharmacy_fill\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"fill_id\", r.\"member_id\", r.\"ndc\", r.\"fill_date\", r.\"days_supply\", r.\"quantity\", r.\"ingredient_cost\", r.\"dispensing_fee\", r.\"plan_paid\", r.\"member_paid\", r.\"status\", r.\"pharmacy_npi\", r.\"updated_at\" FROM \"t_northwind\".\"pharmacy_fill\" r JOIN core.batches b ON b.id = r.\"_batch_id\" WHERE r.\"_is_current\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_pharmacy_fill\" TO \"clearline_rpt_northwind\"",
+    "DROP VIEW IF EXISTS \"t_northwind\".\"rpt_trusted_pharmacy_fill\"",
+    "CREATE VIEW \"t_northwind\".\"rpt_trusted_pharmacy_fill\" AS SELECT r.\"_record_id\", r.\"_key\", r.\"_batch_id\", r.\"_raw_record_id\", r.\"_contract_version_id\", r.\"_transform_version\", r.\"_loaded_at\", r.\"_is_late\", r.\"_migration_id\", b.trust_status AS \"_trust_status\", r.\"fill_id\", r.\"member_id\", r.\"ndc\", r.\"fill_date\", r.\"days_supply\", r.\"quantity\", r.\"ingredient_cost\", r.\"dispensing_fee\", r.\"plan_paid\", r.\"member_paid\", r.\"status\", r.\"pharmacy_npi\", r.\"updated_at\"\n      FROM (SELECT DISTINCT ON (x.\"_key\") x.* FROM \"t_northwind\".\"pharmacy_fill\" x JOIN core.batches xb ON xb.id = x.\"_batch_id\" WHERE NOT x.\"_is_late\" AND xb.trust_status = 'trusted' ORDER BY x.\"_key\", x.\"_record_id\" DESC) r\n      JOIN core.batches b ON b.id = r.\"_batch_id\"",
+    "GRANT SELECT ON \"t_northwind\".\"rpt_trusted_pharmacy_fill\" TO \"clearline_rpt_northwind\""
+  ],
   "impact": {
     "plan": {
       "current_rows": 3
     },
     "claim": {
       "current_rows": 300,
-      "affected_rows": 347
+      "affected_rows": 300
     },
     "member": {
       "current_rows": 80

@@ -49,16 +49,35 @@ export function aggregateSql(agg: string, field: string | undefined, alias = 'r'
 
 export type TrustScope = 'trusted' | 'all' | 'untrusted';
 
-/** FROM/WHERE for the current canonical dataset of an entity, scoped by trust. */
+/**
+ * FROM/WHERE for an entity's dataset, as alias `r` joined to its batch as `b`.
+ *  - 'trusted': for each key, the LATEST non-late version that came from a trusted batch. A newer
+ *    version from an untrusted batch therefore never removes or replaces trusted data; trusted
+ *    outputs show the last trusted state of every record.
+ *  - 'all': the current version of each key, whatever its batch's trust.
+ *  - 'untrusted': current versions from batches that are not trusted.
+ * With as_of, only versions loaded at or before that instant are considered.
+ */
 export function currentFrom(tenant: string, entity: string, scope: TrustScope, asOf?: string, p?: Params, extraJoin = ''): string {
-  const trust = scope === 'trusted' ? ` AND b.trust_status = 'trusted'` : scope === 'untrusted' ? ` AND b.trust_status <> 'trusted'` : '';
+  if (scope === 'trusted') {
+    const ts = asOf ? ` AND x."_loaded_at" <= ${p!.add(asOf, 'timestamptz')}` : '';
+    return `FROM (SELECT DISTINCT ON (x."_key") x.* FROM ${table(tenant, entity)} x JOIN core.batches xb ON xb.id = x."_batch_id"
+                WHERE NOT x."_is_late" AND xb.trust_status = 'trusted'${ts} ORDER BY x."_key", x."_record_id" DESC) r
+          JOIN core.batches b ON b.id = r."_batch_id" ${extraJoin} WHERE true`;
+  }
+  const trust = scope === 'untrusted' ? ` AND b.trust_status <> 'trusted'` : '';
   if (!asOf) return `FROM ${table(tenant, entity)} r JOIN core.batches b ON b.id = r."_batch_id" ${extraJoin} WHERE r."_is_current"${trust}`;
-  // Point-in-time view: the latest version of each key loaded at or before as_of
-  // (ordering identical to the processor: highest version wins, by _record_id among versions present then).
+  // Point-in-time view: the latest non-late version of each key loaded at or before as_of.
   const ts = p!.add(asOf, 'timestamptz');
   return `FROM (SELECT DISTINCT ON (x."_key") x.* FROM ${table(tenant, entity)} x WHERE x."_loaded_at" <= ${ts} AND NOT x."_is_late"
                 ORDER BY x."_key", x."_record_id" DESC) r
           JOIN core.batches b ON b.id = r."_batch_id" ${extraJoin} WHERE true${trust}`;
+}
+
+/** Current records whose relationship target has never been received (shared by dataset checks and the exception report). */
+export function orphanWhere(tenant: string, entity: string, rel: { field: string; references: { entity: string } }): string {
+  return `FROM ${table(tenant, entity)} r WHERE r."_is_current" AND r.${ident(rel.field)} IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM ${table(tenant, rel.references.entity)} t WHERE t."_key" = r.${ident(rel.field)}::text)`;
 }
 
 export function metricSql(tenant: string, m: MetricDef, e: EntityDef, scope: TrustScope): { sql: string; params: unknown[] } {

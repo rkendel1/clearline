@@ -7,7 +7,7 @@ Every number on the dashboard comes from an API response, and every API number f
 ## How tenant-declared metrics are computed
 
 - **Source**: the entity's current canonical versions (`_is_current`) joined to `core.batches`.
-- **Trust scope**: `value` counts only batches with `trust_status = trusted`. `value_including_untrusted` counts all processed batches; `untrusted_records_excluded` is the number of current records held back; `trusted = true` only when nothing was held back.
+- **Trust scope**: `value` uses, per key, the latest version from a batch with `trust_status = trusted`. `value_including_untrusted` counts all processed batches; `untrusted_records_excluded` is the number of current records held back; `trusted = true` only when nothing was held back **and** no dataset check involving the entity is failing (failing checks are listed in `dataset_checks_failing`).
 - **Filters**: the metric's declared condition, compiled to SQL with three-valued logic (a null never satisfies a comparison).
 - **Aggregation**: `count`, `count_distinct(field)`, `sum(field)` rounded to the field's scale, `avg(field)` rounded to 4 places. Decimal sums are exact (PostgreSQL numeric).
 - **Refresh**: computed at query time from committed data. A batch's effects become visible atomically when its transaction commits.

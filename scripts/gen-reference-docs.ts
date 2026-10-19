@@ -19,7 +19,7 @@ const esc = (s: unknown) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g,
 const CORE: Record<string, string> = {
   tenants: 'One row per tenant: id (also the schema suffix), retention policy and its reporting role.',
   reporting_roles: 'Maps database roles used by BI tools to exactly one tenant (used by row-level security).',
-  api_tokens: 'Hashed API tokens with tenant and role. Readable only in system scope.',
+  api_tokens: 'Hashed API tokens with tenant, role and issuer. Readable only in system scope.',
   contract_versions: 'Immutable contract documents per tenant with lifecycle (pending_approval, active, superseded, rejected, rolled_back) and transform version.',
   contract_migrations: 'Migration plans between contract versions: classification, plan JSON (changes, DDL, data ops, impact, rollback), approval and application state.',
   batches: 'One row per submitted payload: provenance (digest, arrival, source-reported time), contract/transform version, pipeline status, trust status and reasons, counts, lease and failure details.',
@@ -30,10 +30,10 @@ const CORE: Record<string, string> = {
   quality_results: 'One row per rule per batch attempt: evaluated and failed counts, severity, contract version.',
   quality_findings: 'Per-record findings (rule, field, message) — the "affected records" for each quality result.',
   reconciliation_results: 'Batch, re-verification and dataset checks: expected, actual, difference, explanation, run id, contract version.',
-  audit_events: 'Append-only audit trail (UPDATE/DELETE/TRUNCATE blocked by trigger; only retention may delete past audit_days).',
+  audit_events: 'Append-only audit trail. The trigger blocks UPDATE and TRUNCATE, and allows DELETE only in a retention run for rows older than the tenant audit_days.',
   export_log: 'Every extract produced: parameters, as_of, row count, content SHA-256 and the record versions included.',
   erasure_log: 'Subject erasures: SHA-256 of the key (never the key), counts and affected prior exports.',
-  batch_adjustments: 'Legitimate removals (erasure, retention) per batch so re-verification does not flag them as drift.',
+  batch_adjustments: 'Per-batch record of legitimate changes (erasure, retention removals; versions created or removed by contract migrations) so re-verification can tell them from drift.',
   worker_heartbeats: 'Live worker registry (last seen, current batch, state).',
   schema_migrations: 'Applied platform migrations with checksums.',
 };
@@ -68,7 +68,7 @@ async function main() {
   d.push('## Reporting views (`reporting`)', '', 'Readable by tenant reporting roles; row-level security limits every row to the role\'s tenant.', '');
   for (const [t, cs] of byTable) if (t.startsWith('reporting.')) d.push(`- **${t}**: ${cs.map((c) => c.column_name).join(', ')}`);
   d.push('', '## System columns on every canonical table', '', '| Column | Meaning |', '|---|---|', ...SYSTEM_COLUMNS.map((c) => `| ${c} | ${SYS[c]} |`), '',
-    'Each entity also gets two views: `current_<entity>` (all fields, current versions) and `rpt_<entity>` (non-sensitive fields only, granted to the tenant reporting role), both carrying `_trust_status`.', '');
+    'Each entity also gets three views: `current_<entity>` (all fields, current versions), `rpt_<entity>` (non-sensitive fields, current versions) and `rpt_trusted_<entity>` (non-sensitive fields, latest version from a trusted batch per key: the same rule as trusted metrics). The `rpt_` views are granted to the tenant reporting role and carry `_trust_status`.', '');
   for (const [tenant, c] of contracts) {
     d.push(`## Canonical model: ${tenant} (contract ${c.version})`, '', c.description ?? '', '');
     for (const [en, e] of Object.entries(c.entities)) {
@@ -91,7 +91,7 @@ async function main() {
     'Every number on the dashboard comes from an API response, and every API number from one of the definitions below. The dashboard formats values (digit grouping, currency sign) but never computes them. The same SQL compiler (`src/reporting/sql.ts`) serves metrics, extracts and dataset checks, so they cannot disagree about a definition. Scenario J and `test/e2e/dashboard.test.ts` verify dashboard, API, extract and independent SQL agree.', '',
     '## How tenant-declared metrics are computed', '',
     '- **Source**: the entity\'s current canonical versions (`_is_current`) joined to `core.batches`.',
-    '- **Trust scope**: `value` counts only batches with `trust_status = trusted`. `value_including_untrusted` counts all processed batches; `untrusted_records_excluded` is the number of current records held back; `trusted = true` only when nothing was held back.',
+    '- **Trust scope**: `value` uses, per key, the latest version from a batch with `trust_status = trusted`. `value_including_untrusted` counts all processed batches; `untrusted_records_excluded` is the number of current records held back; `trusted = true` only when nothing was held back **and** no dataset check involving the entity is failing (failing checks are listed in `dataset_checks_failing`).',
     '- **Filters**: the metric\'s declared condition, compiled to SQL with three-valued logic (a null never satisfies a comparison).',
     '- **Aggregation**: `count`, `count_distinct(field)`, `sum(field)` rounded to the field\'s scale, `avg(field)` rounded to 4 places. Decimal sums are exact (PostgreSQL numeric).',
     '- **Refresh**: computed at query time from committed data. A batch\'s effects become visible atomically when its transaction commits.', ''];

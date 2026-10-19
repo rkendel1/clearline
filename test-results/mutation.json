@@ -1,0 +1,194 @@
+{
+  "generated_at": "2026-10-19T22:26:07.203Z",
+  "mutations": 14,
+  "killed": 14,
+  "survived": 0,
+  "results": [
+    {
+      "id": "trust-always-granted",
+      "protects": "a failed reconciliation or reject threshold must never yield a trusted batch",
+      "file": "src/ingestion/processor.ts",
+      "tests": [
+        "test/scenarios/d-bad-data.test.ts",
+        "test/scenarios/i-reconciliation-failure.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario D: invalid records are quarantined with actionable errors and excluded from metrics",
+        "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
+      ],
+      "seconds": 4
+    },
+    {
+      "id": "route-tenant-check-removed",
+      "protects": "cross-tenant requests are denied (route layer) and audited",
+      "file": "src/control/auth.ts",
+      "tests": [
+        "test/scenarios/g-privacy-violation.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "data-layer-tenant-guard-removed",
+      "protects": "the data layer independently refuses another tenant’s scope",
+      "file": "src/platform/db.ts",
+      "tests": [
+        "test/integration/api.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "data layer refuses a tenant transaction that does not match the request principal (independent of route checks)"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "idempotency-removed",
+      "protects": "resubmitting identical bytes has no business effect",
+      "file": "src/ingestion/intake.ts",
+      "tests": [
+        "test/scenarios/c-duplicate-delivery.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario C: duplicate submissions have no duplicate business effects"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "redaction-removed",
+      "protects": "sensitive fields are redacted in default extracts",
+      "file": "src/reporting/extracts.ts",
+      "tests": [
+        "test/scenarios/a-normal-ingestion.test.ts",
+        "test/scenarios/g-privacy-violation.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario A: valid batch flows from source row to metric and extract",
+        "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
+      ],
+      "seconds": 4
+    },
+    {
+      "id": "control-count-ignored",
+      "protects": "source control counts are reconciled",
+      "file": "src/reconciliation/batch.ts",
+      "tests": [
+        "test/scenarios/i-reconciliation-failure.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "untrusted-versions-count-as-duplicates",
+      "protects": "a trusted resend re-establishes rows held only by an untrusted batch",
+      "file": "src/ingestion/processor.ts",
+      "tests": [
+        "test/scenarios/i-reconciliation-failure.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "trusted-view-uses-current-only",
+      "protects": "an untrusted correction does not displace the trusted value",
+      "file": "src/reporting/sql.ts",
+      "tests": [
+        "test/scenarios/i-reconciliation-failure.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "self-approval-allowed",
+      "protects": "tenant admins cannot approve breaking migrations",
+      "file": "src/control/auth.ts",
+      "tests": [
+        "test/scenarios/h-contract-evolution.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "platform-admin-escalation",
+      "protects": "platform admins cannot mint tenant tokens after bootstrap",
+      "file": "src/control/tenants.ts",
+      "tests": [
+        "test/integration/api.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "platform admin cannot escalate into tenant data: bootstrap-only token issuance and revocation"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "migration-drift-unchecked",
+      "protects": "drift in migration-created rows is detected",
+      "file": "src/reconciliation/reverify.ts",
+      "tests": [
+        "test/scenarios/h-contract-evolution.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
+      ],
+      "seconds": 3
+    },
+    {
+      "id": "queued-batch-uses-superseded-contract",
+      "protects": "batches queued before a breaking migration are not processed under the old contract",
+      "file": "src/ingestion/processor.ts",
+      "tests": [
+        "test/scenarios/h-contract-evolution.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
+      ],
+      "seconds": 3
+    },
+    {
+      "id": "dataset-checks-ignored-by-metrics",
+      "protects": "failing dataset checks qualify trusted metrics",
+      "file": "src/reporting/reports.ts",
+      "tests": [
+        "test/scenarios/i-reconciliation-failure.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "audit-floor-removed",
+      "protects": "young audit events cannot be deleted even in a retention session",
+      "file": "db/migrations/0002_review_hardening.sql",
+      "tests": [
+        "test/integration/api.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor"
+      ],
+      "seconds": 2
+    }
+  ]
+}

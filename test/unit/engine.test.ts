@@ -130,16 +130,24 @@ test('batch reconciliation explains each discrepancy', () => {
 test('logger never writes payload-like fields', () => {
   const lines: string[] = [];
   const orig = process.stdout.write.bind(process.stdout);
-  process.stdout.write = ((s: string) => { lines.push(s); return true; }) as never;
-  const prev = process.env.LOG_LEVEL;
+  process.stdout.write = ((x: string) => { lines.push(x); return true; }) as never;
   try {
-    createLogger({ svc: 't' }).error === undefined; // touch
-    const l = createLogger({ svc: 't' });
-    l.info('x', { payload: { SSN: '912-34-5678' }, authorization: 'Bearer secret', batch_id: 'b1' });
-  } finally { process.stdout.write = orig; process.env.LOG_LEVEL = prev; }
-  const out = lines.join('');
-  if (out) {
-    assert.ok(!out.includes('912-34-5678') && !out.includes('secret'));
-    assert.ok(out.includes('"batch_id":"b1"'));
-  }
+    createLogger({ svc: 't' }).warn('x', { payload: { SSN: '912-34-5678' }, authorization: 'Bearer secret', batch_id: 'b1' });
+  } finally { process.stdout.write = orig; }
+  const errLines: string[] = [];
+  const origErr = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((x: string) => { errLines.push(x); return true; }) as never;
+  try { createLogger({ svc: 't' }).warn('x', { payload: { SSN: '912-34-5678' }, authorization: 'Bearer secret', batch_id: 'b1' }); }
+  finally { process.stderr.write = origErr; }
+  const out = [...lines, ...errLines].join('');
+  assert.ok(out.length > 0, 'a warning is always written');
+  assert.ok(!out.includes('912-34-5678') && !out.includes('secret'));
+  assert.ok(out.includes('"batch_id":"b1"') && out.includes('"payload":"[omitted]"'));
+});
+
+test('values resembling identifiers are not echoed even from non-sensitive fields', () => {
+  const r = run(NW, 'nw_medical_claims_csv', { ...claim, RENDERING_NPI: '912-34-5678' });
+  const msg = r.errors.map((e) => e.message).join(' ');
+  assert.ok(msg.includes('provider_npi'));
+  assert.ok(!msg.includes('912-34-5678'), msg);
 });

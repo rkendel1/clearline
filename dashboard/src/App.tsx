@@ -8,13 +8,14 @@ import { Contracts } from './views/Contracts';
 import { Extracts, Definitions } from './views/Outputs';
 
 type View = 'overview' | 'exceptions' | 'lineage' | 'contracts' | 'extracts' | 'definitions' | 'batch';
-const NAV: { id: View; label: string; roles?: Me['role'][] }[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'exceptions', label: 'Exceptions' },
+const DATA_ROLES: Me['role'][] = ['admin', 'operator', 'reporter'];
+const NAV: { id: View; label: string; roles: Me['role'][] }[] = [
+  { id: 'overview', label: 'Overview', roles: DATA_ROLES },
+  { id: 'exceptions', label: 'Exceptions', roles: DATA_ROLES },
   { id: 'lineage', label: 'Lineage', roles: ['admin', 'operator'] },
-  { id: 'contracts', label: 'Contracts' },
-  { id: 'extracts', label: 'Extracts' },
-  { id: 'definitions', label: 'Metric definitions' },
+  { id: 'contracts', label: 'Contracts', roles: [...DATA_ROLES, 'approver'] },
+  { id: 'extracts', label: 'Extracts', roles: DATA_ROLES },
+  { id: 'definitions', label: 'Metric definitions', roles: DATA_ROLES },
 ];
 
 // Hash routing keeps the server simple: #/overview, #/batch/<id>
@@ -48,6 +49,8 @@ export function App() {
   );
   const tenant = me.tenant_id;
   const openBatch = (id: string) => go('batch', id);
+  // Approvers see no tenant data: they always get the only view they can use (no redirect side effects).
+  const view: View = me.role === 'approver' ? 'contracts' : route.view;
 
   return (
     <div className="shell">
@@ -55,21 +58,21 @@ export function App() {
         <div className="brand"><span className="mark" aria-hidden="true" /> Clearline</div>
         <p className="who"><strong>{tenant}</strong><span>{me.actor}, {me.role}</span></p>
         <nav aria-label="Views">
-          {NAV.filter((n) => !n.roles || n.roles.includes(me.role)).map((n) => (
-            <a key={n.id} href={`#/${n.id}`} aria-current={route.view === n.id ? 'page' : undefined}>{n.label}</a>
+          {NAV.filter((n) => n.roles.includes(me.role)).map((n) => (
+            <a key={n.id} href={`#/${n.id}`} aria-current={view === n.id ? 'page' : undefined}>{n.label}</a>
           ))}
         </nav>
         <button className="link signout" onClick={signOut}>Sign out</button>
         <p className="synthetic">Synthetic data only. Not for real member information.</p>
       </aside>
       <main className="content" id="main">
-        {route.view === 'overview' && <Overview tenant={tenant} onOpenBatch={openBatch} />}
-        {route.view === 'batch' && route.arg && <BatchDetail tenant={tenant} id={route.arg} me={me} onBack={() => go('overview')} />}
-        {route.view === 'exceptions' && <Exceptions tenant={tenant} me={me} onOpenBatch={openBatch} />}
-        {route.view === 'lineage' && <Lineage tenant={tenant} onOpenBatch={openBatch} />}
-        {route.view === 'contracts' && <Contracts tenant={tenant} me={me} />}
-        {route.view === 'extracts' && <Extracts tenant={tenant} me={me} />}
-        {route.view === 'definitions' && <Definitions tenant={tenant} />}
+        {view === 'overview' && <Overview tenant={tenant} onOpenBatch={openBatch} />}
+        {view === 'batch' && route.arg && <BatchDetail tenant={tenant} id={route.arg} me={me} onBack={() => go('overview')} />}
+        {view === 'exceptions' && <Exceptions tenant={tenant} me={me} onOpenBatch={openBatch} />}
+        {view === 'lineage' && <Lineage tenant={tenant} onOpenBatch={openBatch} />}
+        {view === 'contracts' && <Contracts tenant={tenant} me={me} />}
+        {view === 'extracts' && <Extracts tenant={tenant} me={me} />}
+        {view === 'definitions' && <Definitions tenant={tenant} />}
       </main>
     </div>
   );

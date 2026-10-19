@@ -44,4 +44,4 @@ export async function download(path: string, filename: string) {
   return { rows: res.headers.get('x-clearline-row-count'), sha256: res.headers.get('x-clearline-sha256') };
 }
 
-export interface Me { actor: string; tenant_id: string | null; role: 'platform_admin' | 'admin' | 'operator' | 'reporter' }
+export interface Me { actor: string; tenant_id: string | null; role: 'platform_admin' | 'admin' | 'approver' | 'operator' | 'reporter' }

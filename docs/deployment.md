@@ -20,7 +20,7 @@ All settings are environment variables, validated at startup (`src/platform/conf
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | `postgres://clearline:clearline@localhost:5432/clearline` | **Secret.** Connection string |
-| `NODE_ENV` | `development` | `production` disables fault injection, forces distinct-approver checks, blocks the demo seed |
+| `NODE_ENV` | `development` | `production` disables fault injection and blocks the demo seed |
 | `PORT`, `HOST` | `8080`, `0.0.0.0` | API listener |
 | `LOG_LEVEL` | `info` (`warn` in test) | `debug` \| `info` \| `warn` \| `error` |
 | `DB_POOL_SIZE` | `10` | Connections per process |
@@ -36,7 +36,6 @@ All settings are environment variables, validated at startup (`src/platform/conf
 | `MIGRATE_ON_START` | `false` | Apply migrations when the API starts (prefer a separate migrate job) |
 | `DASHBOARD_DIR` | `dashboard/dist` | Static dashboard build served at `/` |
 | `METRICS_TOKEN` | unset | **Secret.** If set, `/metrics` requires `Authorization: Bearer <token>` |
-| `ALLOW_SELF_APPROVAL` | `false` | Outside production only: allow a requester to approve their own breaking migration |
 | `CLEARLINE_FAULT_INJECTION` | unset | Test-only (`crash_after_rows=N`, `fail_source=<id>`); ignored in production |
 
 Compose sets explicit CPU and memory limits per service (`deploy.resources.limits`) and a 30-second stop grace period.
@@ -45,7 +44,7 @@ Compose sets explicit CPU and memory limits per service (`deploy.resources.limit
 
 - The repository contains **only** local demo credentials: Compose's `clearline-local-only` password and the seeded `cl_dev_*` tokens. They are listed in `.gitleaks.toml` so the CI secret scan still fails on anything else.
 - In any shared environment, inject `DATABASE_URL` and `METRICS_TOKEN` from the platform's secret store (AWS Secrets Manager / SSM, GCP Secret Manager, Azure Key Vault, Kubernetes Secrets with external-secrets, or Vault) as environment variables at runtime. Never bake them into images or Compose files.
-- API tokens are generated server-side (`cl_` + 192 random bits), returned **once**, stored as SHA-256, and revocable (`POST /api/v1/tenants/:tenant/tokens/:name/revoke`). The first tenant-admin token is issued by a platform-admin token. Create that one out of band (the seed script shows how) and store it in the secret store.
+- API tokens are generated server-side (`cl_` + 192 random bits), returned **once**, stored as SHA-256, and revocable (`POST /api/v1/tenants/:tenant/tokens/:name/revoke`). Bootstrap order: the platform-admin token (created out of band; the seed script shows how) creates the tenant and issues its **first admin** token and its **approver** tokens; the tenant admin issues operator and reporter tokens. After that the platform admin cannot issue further tenant tokens or revoke admins. If a tenant loses every admin, the platform admin can bootstrap a new one (audited).
 - Rotate database credentials by adding the new role/password, rolling the services, then removing the old one. Rotate tokens by issuing a new one under a new name, switching clients, and revoking the old one.
 
 ## Path to a cloud deployment

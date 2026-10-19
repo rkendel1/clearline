@@ -191,3 +191,56 @@ test('data layer refuses a tenant transaction that does not match the request pr
   assert.equal(await requestTenant.run({ tenantId: 'northwind', actor: 'ok' }, () => withTenant('northwind', async () => 'ok')), 'ok');
   assert.equal(await withTenant('northwind', async () => 'worker'), 'worker', 'no binding outside requests (worker, CLI)');
 });
+
+test('platform admin cannot escalate into tenant data: bootstrap-only token issuance and revocation', async () => {
+  const pa = client(ctx, DEV_TOKENS.platform);
+  const asAdmin = await pa.post('/api/v1/tenants/northwind/tokens', { name: 'pa-escalation', role: 'admin' });
+  assert.equal(asAdmin.status, 403);
+  assert.equal(asAdmin.body.error.code, 'bootstrap_only', 'northwind already has an admin');
+  assert.equal((await pa.post('/api/v1/tenants/northwind/tokens', { name: 'pa-rep', role: 'reporter' })).status, 403);
+  assert.equal((await pa.post('/api/v1/tenants/northwind/tokens/northwind-admin/revoke')).status, 403, 'cannot revoke admins to re-bootstrap');
+  const appr = await pa.post('/api/v1/tenants/northwind/tokens', { name: 'northwind-approver-2', role: 'approver' });
+  assert.equal(appr.status, 201, 'approver tokens (no data access) are issued by the platform admin');
+  assert.equal((await client(ctx, appr.body.token).get('/api/v1/tenants/northwind/reports/business')).status, 403);
+  assert.equal((await pa.post('/api/v1/tenants/northwind/tokens/northwind-approver-2/revoke')).status, 200);
+  const ev = (await client(ctx, DEV_TOKENS.northwind.admin).get('/api/v1/tenants/northwind/audit?action=token')).body.map((e: { action: string; outcome: string }) => `${e.action}:${e.outcome}`);
+  for (const want of ['token.issue:denied', 'token.revoke:denied', 'token.issue:succeeded', 'token.revoke:succeeded']) assert.ok(ev.includes(want), want);
+});
+
+test('audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor', async () => {
+  const admin = client(ctx, DEV_TOKENS.northwind.admin);
+  const key = nwMembers(40, 1101)[7].MBR_ID;
+  assert.equal((await admin.get(`${NW}/lineage/member/${key}`)).status, 200);
+  const reads = (await admin.get(`${NW}/audit?action=access.read`)).body;
+  const lin = reads.find((e: { resource: string }) => e.resource === '/api/v1/tenants/:tenant/lineage/:entity/:key');
+  assert.ok(lin, 'lineage read audited');
+  assert.match(lin.details.params.key, /^sha256:[0-9a-f]{16}$/);
+  assert.ok(!JSON.stringify(reads).includes(key), 'raw subject key never stored in the append-only audit trail');
+  const actions = new Set((await admin.get(`${NW}/audit?limit=5000`)).body.map((e: { action: string }) => e.action));
+  for (const a of ['quarantine.resolve', 'retention.run', 'subject.erase', 'extract.run', 'batch.submit', 'batch.process', 'batch.replay']) assert.ok(actions.has(a), `audited: ${a}`);
+  // Even in a retention session, young audit rows cannot be deleted.
+  await assert.rejects(sql(`SELECT set_config('app.audit_retention_purge', 'on', true); DELETE FROM core.audit_events WHERE tenant_id = 'northwind'`), /younger than the retention period/);
+});
+
+test('sensitive-looking values in non-sensitive fields are never echoed and are scrubbed from raw payloads', async () => {
+  const op = client(ctx, DEV_TOKENS.northwind.operator);
+  const claims = nwClaims(3, nwMembers(40, 1101).map((m) => m.MBR_ID), 1103, 70_001);
+  claims[0] = { ...claims[0], PROC_CD: '912-34-5678' };   // an SSN in a mapped, internal, free-text field
+  const sub = await op.csv('northwind', 'nw_medical_claims_csv', toCsv(claims as never, NW_CLAIM_COLUMNS));
+  await ctx.worker.drain();
+  const msgs = JSON.stringify(await sql(`SELECT message FROM core.quality_findings WHERE batch_id = $1`, [sub.body.batch_id]));
+  assert.ok(msgs.includes('procedure_code'), msgs);
+  assert.ok(!msgs.includes('912-34-5678'), 'value redacted in findings');
+  assert.ok(!JSON.stringify(await sql(`SELECT errors FROM core.quarantine WHERE batch_id = $1`, [sub.body.batch_id])).includes('912-34-5678'));
+  const raw = await sql(`SELECT payload FROM core.raw_records WHERE batch_id = $1 AND row_number = 1`, [sub.body.batch_id]);
+  assert.equal(raw[0].payload.PROC_CD, '[scrubbed: sensitive value detected]');
+});
+
+test('input edge cases return 4xx, never 500', async () => {
+  const op = client(ctx, DEV_TOKENS.northwind.operator);
+  assert.equal((await op.get(`${NW}/batches/not-a-uuid/findings`)).status, 404);
+  assert.equal((await op.get(`${NW}/quarantine?batch_id=nope`)).status, 400);
+  assert.equal((await op.get(`${NW}/lineage/__proto__/x`)).status, 404);
+  assert.equal((await op.get(`${NW}/entities/constructor/records`)).status, 404);
+  assert.equal((await op.csv('northwind', '__proto__', 'A\n1\n')).status, 400);
+});

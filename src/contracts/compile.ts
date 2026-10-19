@@ -65,7 +65,7 @@ export function createEntityTableDDL(tenant: string, entity: string, e: EntityDe
 ${cols.join(',\n')}
 )`,
     `CREATE UNIQUE INDEX IF NOT EXISTS ${ident(`${entity}_current_key`)} ON ${t} ("_key") WHERE "_is_current"`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS ${ident(`${entity}_key_hash`)} ON ${t} ("_key", "_record_hash")`,
+    `CREATE INDEX IF NOT EXISTS ${ident(`${entity}_key_hash`)} ON ${t} ("_key", "_record_hash")`,
     `CREATE INDEX IF NOT EXISTS ${ident(`${entity}_batch`)} ON ${t} ("_batch_id")`,
   ];
 }
@@ -86,6 +86,12 @@ export function viewsDDL(tenant: string, c: Contract): string[] {
     out.push(`DROP VIEW IF EXISTS ${s}.${ident(`rpt_${en}`)}`);
     out.push(`CREATE VIEW ${s}.${ident(`rpt_${en}`)} AS SELECT ${lineage}${publicFields.length ? ', ' + publicFields.join(', ') : ''} ${from}`);
     out.push(`GRANT SELECT ON ${s}.${ident(`rpt_${en}`)} TO ${role}`);
+    // Trusted state for BI: per key, the latest version from a trusted batch (same rule as trusted metrics and extracts).
+    out.push(`DROP VIEW IF EXISTS ${s}.${ident(`rpt_trusted_${en}`)}`);
+    out.push(`CREATE VIEW ${s}.${ident(`rpt_trusted_${en}`)} AS SELECT ${lineage}${publicFields.length ? ', ' + publicFields.join(', ') : ''}
+      FROM (SELECT DISTINCT ON (x."_key") x.* FROM ${t} x JOIN core.batches xb ON xb.id = x."_batch_id" WHERE NOT x."_is_late" AND xb.trust_status = 'trusted' ORDER BY x."_key", x."_record_id" DESC) r
+      JOIN core.batches b ON b.id = r."_batch_id"`);
+    out.push(`GRANT SELECT ON ${s}.${ident(`rpt_trusted_${en}`)} TO ${role}`);
   }
   return out;
 }

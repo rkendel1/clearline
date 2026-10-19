@@ -4,12 +4,13 @@
   "key": "C000000104",
   "active_contract_version": "1.0.0",
   "current_record_id": 401,
+  "trusted_record_id": 401,
   "versions": [
     {
       "record_id": 101,
       "is_current": false,
       "is_late": false,
-      "loaded_at": "2026-10-19T21:50:40.330Z",
+      "loaded_at": "2026-10-19T22:29:02.411Z",
       "values": {
         "status": "DENIED",
         "claim_id": "C000000104",
@@ -29,11 +30,11 @@
       "supersedes_record_id": null,
       "migration": null,
       "batch": {
-        "id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b",
+        "id": "be7e87ef-f473-445c-bb23-140e63b903e1",
         "source_id": "nw_medical_claims_csv",
         "format": "csv",
         "payload_digest": "9a1ce689b422f584237a8b2fb1bc3871d7735f0f6df1873325bd782cc28ac9c4",
-        "arrival_at": "2026-10-19T21:50:40.006Z",
+        "arrival_at": "2026-10-19T22:29:02.111Z",
         "source_reported_at": "2026-09-30T02:00:00.000Z",
         "is_late": false,
         "status": "completed_with_exceptions",
@@ -118,7 +119,7 @@
       "record_id": 401,
       "is_current": true,
       "is_late": false,
-      "loaded_at": "2026-10-19T21:50:40.400Z",
+      "loaded_at": "2026-10-19T22:29:02.501Z",
       "values": {
         "status": "PAID",
         "claim_id": "C000000104",
@@ -138,11 +139,11 @@
       "supersedes_record_id": null,
       "migration": null,
       "batch": {
-        "id": "503e2c14-0fe2-47b5-9e56-6d46dc07cdbf",
+        "id": "a0e93158-a891-4980-8a68-eccad1223df6",
         "source_id": "nw_medical_claims_csv",
         "format": "csv",
         "payload_digest": "1ab751f2ffd94ae600302c07382d073292edb1d82ba0c8e3abbc3d3517b531ab",
-        "arrival_at": "2026-10-19T21:50:40.045Z",
+        "arrival_at": "2026-10-19T22:29:02.157Z",
         "source_reported_at": "2026-10-01T02:00:00.000Z",
         "is_late": false,
         "status": "completed",

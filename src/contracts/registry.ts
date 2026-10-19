@@ -52,6 +52,12 @@ async function lockTenantExclusive(tx: Tx, tenantId: string) {
   await tx.query(`SELECT pg_advisory_xact_lock(hashtext('clearline.tenant.' || $1))`, [tenantId]);
 }
 
+/** Drop every generated view in the tenant schema (they are always regenerated from the active contract). */
+async function dropTenantViews(tx: Tx, tenantId: string) {
+  const { rows } = await tx.query(`SELECT table_name FROM information_schema.views WHERE table_schema = $1`, [`t_${tenantId}`]);
+  for (const r of rows) await tx.query(`DROP VIEW IF EXISTS ${ident(`t_${tenantId}`)}.${ident(r.table_name)}`);
+}
+
 async function addImpact(tx: Tx, tenantId: string, plan: MigrationPlan, prev: Contract | null) {
   if (!prev) return;
   plan.impact = {};
@@ -59,20 +65,20 @@ async function addImpact(tx: Tx, tenantId: string, plan: MigrationPlan, prev: Co
     const { rows } = await tx.query(`SELECT count(*)::int AS n FROM ${table(tenantId, en)} WHERE "_is_current"`);
     plan.impact[en] = { current_rows: rows[0].n };
   }
-  for (const op of plan.data_ops) {
-    if (!prev.entities[op.entity]?.fields[op.field] && op.type === 'value_map') continue;
-    const exists = !!prev.entities[op.entity]?.fields[op.field];
-    let n = 0;
-    if (op.type === 'backfill') {
-      n = exists
-        ? (await tx.query(`SELECT count(*)::int AS n FROM ${table(tenantId, op.entity)} WHERE "_is_current" AND ${ident(op.field)} IS NULL`)).rows[0].n
-        : plan.impact[op.entity]?.current_rows ?? 0;
-    } else {
-      n = (await tx.query(`SELECT count(*)::int AS n FROM ${table(tenantId, op.entity)} WHERE "_is_current" AND ${ident(op.field)}::text = ANY($1)`, [Object.keys(op.value_map!)])).rows[0].n;
-    }
-    const cur = plan.impact[op.entity] ?? { current_rows: 0 };
-    cur.affected_rows = (cur.affected_rows ?? 0) + n;
-    plan.impact[op.entity] = cur;
+  // Distinct current rows that at least one data operation will give a new version (a row hit by two ops counts once).
+  const byEntity = new Map<string, MigrationPlan['data_ops']>();
+  for (const op of plan.data_ops) byEntity.set(op.entity, [...(byEntity.get(op.entity) ?? []), op]);
+  for (const [en, ops] of byEntity) {
+    const params: unknown[] = [];
+    const conds = ops.map((op) => {
+      const exists = !!prev.entities[en]?.fields[op.field];
+      if (op.type === 'backfill') return exists ? `${ident(op.field)} IS NULL` : 'true';
+      if (!exists) return 'false';
+      params.push(Object.keys(op.value_map!));
+      return `${ident(op.field)}::text = ANY($${params.length})`;
+    });
+    const n = (await tx.query(`SELECT count(*)::int AS n FROM ${table(tenantId, en)} WHERE "_is_current" AND (${conds.join(' OR ')})`, params)).rows[0].n;
+    plan.impact[en] = { ...(plan.impact[en] ?? { current_rows: 0 }), affected_rows: n };
   }
 }
 
@@ -103,6 +109,7 @@ export async function publishContract(p: Principal, tenantId: string, doc: unkno
     if (dupe.rows.length) throw conflict('version_exists', `Version ${contract.version} already exists for ${tenantId}; versions are immutable`);
 
     const plan = planMigration(tenantId, active?.document ?? null, contract);
+    plan.view_ddl = ['-- all generated views in this tenant schema are dropped, then:', ...viewsDDL(tenantId, contract)];
     await addImpact(tx, tenantId, plan, active?.document ?? null);
 
     if (plan.classification === 'rejected') {
@@ -137,6 +144,8 @@ async function applyInTx(tx: Tx, tenantId: string, migId: number, p: Principal, 
   const m = rows[0];
   const plan = m.plan as MigrationPlan;
   const next = await getContractVersion(tx, Number(m.to_version_id));
+  // Generated views depend on table columns; drop them first so type widenings can apply, then regenerate.
+  await dropTenantViews(tx, tenantId);
   for (const sql of plan.ddl) await tx.query(sql);
   // Views are regenerated before data operations so they reflect the new contract's column set.
   for (const sql of viewsDDL(tenantId, next.document)) await tx.query(sql);
@@ -180,6 +189,9 @@ async function runDataOps(tx: Tx, tenantId: string, migId: number, next: Contrac
       n++;
     }
     counts[en] = n;
+    // Record per batch how many versions this migration created, so re-verification can check them.
+    await tx.query(`INSERT INTO core.batch_adjustments (tenant_id, batch_id, reason, rows_removed, migration_rows_added)
+      SELECT $1, "_batch_id", $3, 0, count(*)::int FROM ${t} WHERE "_migration_id" = $2 GROUP BY "_batch_id"`, [tenantId, migId, `migration:${migId}`]);
   }
   return counts;
 }
@@ -245,6 +257,8 @@ export async function rollbackMigration(p: Principal, tenantId: string, migId: n
     const restored: Record<string, number> = {};
     for (const en of new Set(plan.data_ops.map((o) => o.entity))) {
       const t = table(tenantId, en);
+      await tx.query(`INSERT INTO core.batch_adjustments (tenant_id, batch_id, reason, rows_removed, migration_rows_removed)
+        SELECT $1, "_batch_id", $3, 0, count(*)::int FROM ${t} WHERE "_migration_id" = $2 GROUP BY "_batch_id"`, [tenantId, migId, `rollback:${migId}`]);
       const del = await tx.query(`DELETE FROM ${t} WHERE "_migration_id" = $1 RETURNING "_supersedes_record_id"`, [migId]);
       const ids = del.rows.map((r) => r._supersedes_record_id);
       if (ids.length) await tx.query(`UPDATE ${t} SET "_is_current" = true WHERE "_record_id" = ANY($1)`, [ids]);
@@ -253,6 +267,7 @@ export async function rollbackMigration(p: Principal, tenantId: string, migId: n
     await tx.query(`UPDATE core.contract_versions SET lifecycle = 'rolled_back' WHERE id = $1`, [m.to_version_id]);
     await tx.query(`UPDATE core.contract_versions SET lifecycle = 'active' WHERE id = $1`, [m.from_version_id]);
     const prev = await getContractVersion(tx, Number(m.from_version_id));
+    await dropTenantViews(tx, tenantId);
     for (const sql of viewsDDL(tenantId, prev.document)) await tx.query(sql);
     await tx.query(`UPDATE core.contract_migrations SET status = 'rolled_back', rolled_back_at = now() WHERE id = $1`, [migId]);
     await auditTx(tx, { tenantId, actor: p.actor, role: p.role, action: 'contract.migration.rollback', resource: `migration:${migId}`, outcome: 'succeeded', details: { restored_versions: restored }, correlationId: p.correlationId });

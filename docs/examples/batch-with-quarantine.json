@@ -1,5 +1,5 @@
 {
-  "id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b",
+  "id": "be7e87ef-f473-445c-bb23-140e63b903e1",
   "tenant_id": "northwind",
   "source_id": "nw_medical_claims_csv",
   "entity": "claim",
@@ -8,7 +8,7 @@
   "format": "csv",
   "payload_digest": "9a1ce689b422f584237a8b2fb1bc3871d7735f0f6df1873325bd782cc28ac9c4",
   "byte_size": "36747",
-  "arrival_at": "2026-10-19T21:50:40.006Z",
+  "arrival_at": "2026-10-19T22:29:02.111Z",
   "source_reported_at": "2026-09-30T02:00:00.000Z",
   "is_late": false,
   "control": {
@@ -36,20 +36,20 @@
   "trust_status": "trusted",
   "trust_reasons": [],
   "structural_rejection": null,
-  "started_at": "2026-10-19T21:50:40.266Z",
-  "completed_at": "2026-10-19T21:50:40.270Z",
+  "started_at": "2026-10-19T22:29:02.340Z",
+  "completed_at": "2026-10-19T22:29:02.344Z",
   "failed_at": null,
   "failure": null,
   "submitted_by": "northwind-operator",
-  "correlation_id": "3c0f0bcc-17d9-4c42-b761-fd82fabeb9e8",
+  "correlation_id": "07ac6384-59ea-459d-af10-06c4c2e363e5",
   "contract_version": "1.0.0",
-  "processing_run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1",
+  "processing_run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1",
   "attempts": [
     {
       "attempt": 1,
-      "worker_id": "vm-8449-cacc5732",
-      "started_at": "2026-10-19T21:50:40.266Z",
-      "ended_at": "2026-10-19T21:50:40.270Z",
+      "worker_id": "vm-14595-52c73018",
+      "started_at": "2026-10-19T22:29:02.340Z",
+      "ended_at": "2026-10-19T22:29:02.344Z",
       "outcome": "succeeded",
       "error": null
     }
@@ -58,14 +58,14 @@
     {
       "outcome": "accepted",
       "submitted_by": "northwind-operator",
-      "submitted_at": "2026-10-19T21:50:40.006Z",
-      "correlation_id": "3c0f0bcc-17d9-4c42-b761-fd82fabeb9e8"
+      "submitted_at": "2026-10-19T22:29:02.111Z",
+      "correlation_id": "07ac6384-59ea-459d-af10-06c4c2e363e5"
     },
     {
       "outcome": "duplicate",
       "submitted_by": "northwind-operator",
-      "submitted_at": "2026-10-19T21:50:40.054Z",
-      "correlation_id": "2e09a79c-6734-4038-8cda-40db16efbbdb"
+      "submitted_at": "2026-10-19T22:29:02.166Z",
+      "correlation_id": "f2494d64-b220-4bb3-aef4-775a9a326c90"
     }
   ],
   "quality_results": [
@@ -153,7 +153,7 @@
       "severity": "warning",
       "evaluated_count": 1,
       "failed_count": 0,
-      "description": "arrival-to-completion 0.4s vs threshold 300s",
+      "description": "arrival-to-completion 0.3s vs threshold 300s",
       "contract_version": "1.0.0",
       "attempt": 1
     },
@@ -241,7 +241,7 @@
         "rows": 0
       },
       "explanation": "All 400 received rows are accounted for: 397 accepted, 3 quarantined, 0 exact duplicates.",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "target_row_count",
@@ -256,7 +256,7 @@
         "rows": 0
       },
       "explanation": "Target table holds exactly the 397 versions this batch accepted.",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "source_control_count",
@@ -271,7 +271,7 @@
         "rows": 0
       },
       "explanation": "Received row count matches the sender's control count (400).",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "financial_accounting:paid_amount",
@@ -288,7 +288,7 @@
         "amount": "0.00"
       },
       "explanation": "paid_amount: 188812.08 accepted into canonical data, 1723.75 held in quarantine, 0 in exact duplicates (no effect).",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "target_sum:paid_amount",
@@ -303,7 +303,7 @@
         "amount": "0.00"
       },
       "explanation": "Persisted paid_amount total equals the accepted total (188812.08).",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "source_control_sum:billed_amount",
@@ -319,7 +319,7 @@
         "amount": "0.00"
       },
       "explanation": "Sum of billed_amount across received rows matches the sender's control total (493709.51).",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "financial_accounting:billed_amount",
@@ -336,7 +336,7 @@
         "amount": "0.00"
       },
       "explanation": "billed_amount: 489755.37 accepted into canonical data, 3954.14 held in quarantine, 0 in exact duplicates (no effect).",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     },
     {
       "check_id": "target_sum:billed_amount",
@@ -351,7 +351,7 @@
         "amount": "0.00"
       },
       "explanation": "Persisted billed_amount total equals the accepted total (489755.37).",
-      "run_id": "19308434-097d-4b0d-a7b8-8bbdf9e77d3b#1"
+      "run_id": "be7e87ef-f473-445c-bb23-140e63b903e1#1"
     }
   ]
 }

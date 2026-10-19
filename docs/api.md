@@ -37,7 +37,7 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| POST | `/api/v1/tenants/:tenant/tokens` | platform_admin, admin | Issue an API token for a tenant role (admin\|operator\|reporter). Token is returned once. |
+| POST | `/api/v1/tenants/:tenant/tokens` | platform_admin, admin | Issue an API token (admin\|operator\|reporter by tenant admins; first admin and approver tokens by the platform admin). Token is returned once. |
 | GET | `/api/v1/tenants/:tenant/tokens` | platform_admin, admin | List the tenant's API tokens (names, roles, revocation state; never secrets). |
 | POST | `/api/v1/tenants/:tenant/tokens/:name/revoke` | platform_admin, admin | Revoke a token by name; effective on the next request. |
 
@@ -45,25 +45,25 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant` | admin, operator, reporter | Tenant details and retention policy. |
+| GET | `/api/v1/tenants/:tenant` | admin, approver, operator, reporter | Tenant details and retention policy. |
 
 ## Contracts
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/contracts` | admin, operator, reporter | All contract versions with lifecycle state. |
-| GET | `/api/v1/tenants/:tenant/contracts/active` | admin, operator, reporter | The active contract document. |
-| POST | `/api/v1/tenants/:tenant/contracts/validate` | admin, operator, reporter | Dry run: validate a contract and show the migration plan without changing anything. |
+| GET | `/api/v1/tenants/:tenant/contracts` | admin, approver, operator, reporter | All contract versions with lifecycle state. |
+| GET | `/api/v1/tenants/:tenant/contracts/active` | admin, approver, operator, reporter | The active contract document. |
+| POST | `/api/v1/tenants/:tenant/contracts/validate` | admin, approver, operator, reporter | Dry run: validate a contract and show the migration plan without changing anything. |
 | POST | `/api/v1/tenants/:tenant/contracts` | admin | Publish a contract version. 201 = applied; 202 = breaking, awaiting approval; 422 = invalid or rejected. |
 
 ## Migrations
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/migrations` | admin, operator, reporter | Contract migrations with plans and approval state. |
-| POST | `/api/v1/tenants/:tenant/migrations/:id/approve` | admin | Approve and apply a pending breaking migration. Body: {confirm_version}. Requester cannot self-approve. |
-| POST | `/api/v1/tenants/:tenant/migrations/:id/reject` | admin | Reject a pending migration. Body: {reason}. |
-| POST | `/api/v1/tenants/:tenant/migrations/:id/rollback` | admin | Roll back an applied migration (only before any batch uses the new version). |
+| GET | `/api/v1/tenants/:tenant/migrations` | admin, approver, operator, reporter | Contract migrations with plans and approval state. |
+| POST | `/api/v1/tenants/:tenant/migrations/:id/approve` | approver | Approve and apply a pending breaking migration (approver role). Body: {confirm_version}. |
+| POST | `/api/v1/tenants/:tenant/migrations/:id/reject` | approver | Reject a pending migration. Body: {reason}. |
+| POST | `/api/v1/tenants/:tenant/migrations/:id/rollback` | approver | Roll back an applied migration (only before any batch uses the new version). |
 
 ## Batches
 

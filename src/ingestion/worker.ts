@@ -60,10 +60,15 @@ export async function recoverExpiredLeases(): Promise<{ id: string; status: stri
 async function recordFailure(c: Claimed, workerId: string, err: Error, requeue: boolean) {
   await withSystem(async (tx) => {
     const failure = { reason: err.name, message: err.message.slice(0, 2000), attempt: c.attempt_count, worker: workerId };
-    await tx.query(`UPDATE core.batches SET status = $2, failure = $3, failed_at = CASE WHEN $2 = 'failed' THEN now() END,
-        lease_owner = NULL, lease_expires_at = NULL, trust_status = CASE WHEN $2 = 'failed' THEN 'untrusted' ELSE trust_status END,
-        trust_reasons = CASE WHEN $2 = 'failed' THEN '["processing failed; no results were published"]'::jsonb ELSE trust_reasons END
-      WHERE id = $1 AND status = 'processing' AND lease_owner = $4`, [c.id, requeue ? 'queued' : 'failed', JSON.stringify(failure), workerId]);
+    // An interruption re-queues the batch unless it has used up its attempts (repeated shutdowns must not loop forever).
+    const { rows } = await tx.query(`UPDATE core.batches SET
+        status = CASE WHEN $2 AND attempt_count < max_attempts THEN 'queued' ELSE 'failed' END,
+        failure = $3, failed_at = CASE WHEN $2 AND attempt_count < max_attempts THEN NULL ELSE now() END,
+        lease_owner = NULL, lease_expires_at = NULL,
+        trust_status = CASE WHEN $2 AND attempt_count < max_attempts THEN trust_status ELSE 'untrusted' END,
+        trust_reasons = CASE WHEN $2 AND attempt_count < max_attempts THEN trust_reasons ELSE '["processing failed; no results were published"]'::jsonb END
+      WHERE id = $1 AND status = 'processing' AND lease_owner = $4 RETURNING status`, [c.id, requeue, JSON.stringify(failure), workerId]);
+    requeue = rows[0]?.status === 'queued';
     await tx.query(`UPDATE core.batch_attempts SET outcome = $3, ended_at = now(), error = $4 WHERE batch_id = $1 AND attempt = $2`,
       [c.id, c.attempt_count, requeue ? 'interrupted' : 'failed', JSON.stringify(failure)]);
   });
@@ -159,8 +164,11 @@ export class Worker {
 
 export async function replayBatch(tenantId: string, batchId: string) {
   return withTenant(tenantId, async (tx) => {
-    const { rows } = await tx.query(`UPDATE core.batches SET status = 'queued', max_attempts = attempt_count + $3, failure = NULL, failed_at = NULL,
-        trust_status = 'pending', trust_reasons = '[]'::jsonb WHERE id = $1 AND tenant_id = $2 AND status = 'failed' RETURNING id, status, attempt_count`, [batchId, tenantId, loadConfig().maxAttempts]);
+    // Replay always re-processes under the ACTIVE contract (the batch may have failed because its own was superseded).
+    const { rows } = await tx.query(`UPDATE core.batches b SET status = 'queued', max_attempts = attempt_count + $3, failure = NULL, failed_at = NULL,
+        trust_status = 'pending', trust_reasons = '[]'::jsonb, contract_version_id = cv.id, transform_version = cv.transform_version
+        FROM core.contract_versions cv WHERE cv.tenant_id = $2 AND cv.lifecycle = 'active'
+          AND b.id = $1 AND b.tenant_id = $2 AND b.status = 'failed' RETURNING b.id, b.status, b.attempt_count, cv.version AS contract_version`, [batchId, tenantId, loadConfig().maxAttempts]);
     return rows[0] ?? null;
   });
 }

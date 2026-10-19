@@ -1,7 +1,7 @@
 {
   "tenant": "northwind",
   "contract_version": "1.0.0",
-  "generated_at": "2026-10-19T21:50:40.689Z",
+  "generated_at": "2026-10-19T22:29:02.828Z",
   "metrics": [
     {
       "id": "active_members",
@@ -19,6 +19,7 @@
       "value": "99",
       "value_including_untrusted": "99",
       "untrusted_records_excluded": 0,
+      "dataset_checks_failing": [],
       "trusted": true
     },
     {
@@ -33,6 +34,7 @@
       "value": "150",
       "value_including_untrusted": "150",
       "untrusted_records_excluded": 0,
+      "dataset_checks_failing": [],
       "trusted": true
     },
     {
@@ -47,6 +49,7 @@
       "value": "397",
       "value_including_untrusted": "457",
       "untrusted_records_excluded": 60,
+      "dataset_checks_failing": [],
       "trusted": false
     },
     {
@@ -65,6 +68,7 @@
       "value": "279",
       "value_including_untrusted": "317",
       "untrusted_records_excluded": 60,
+      "dataset_checks_failing": [],
       "trusted": false
     },
     {
@@ -83,6 +87,7 @@
       "value": "46",
       "value_including_untrusted": "59",
       "untrusted_records_excluded": 60,
+      "dataset_checks_failing": [],
       "trusted": false
     },
     {
@@ -104,6 +109,7 @@
       "value": "189670.45",
       "value_including_untrusted": "219121.70",
       "untrusted_records_excluded": 60,
+      "dataset_checks_failing": [],
       "trusted": false
     },
     {
@@ -118,6 +124,7 @@
       "value": "489755.37",
       "value_including_untrusted": "571002.34",
       "untrusted_records_excluded": 60,
+      "dataset_checks_failing": [],
       "trusted": false
     },
     {
@@ -136,6 +143,7 @@
       "value": "120",
       "value_including_untrusted": "120",
       "untrusted_records_excluded": 0,
+      "dataset_checks_failing": [],
       "trusted": true
     },
     {
@@ -154,6 +162,7 @@
       "value": "31177.27",
       "value_including_untrusted": "31177.27",
       "untrusted_records_excluded": 0,
+      "dataset_checks_failing": [],
       "trusted": true
     }
   ],

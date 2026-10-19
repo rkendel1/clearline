@@ -51,7 +51,7 @@ route('POST', '/api/v1/tenants', 'tenant:create', 'Create a tenant (schema, repo
   rep.code(201);
   return createTenant(p, { id: String(b.id ?? ''), name: String(b.name ?? ''), retention: b.retention as never });
 });
-route('POST', '/api/v1/tenants/:tenant/tokens', 'token:issue', 'Issue an API token for a tenant role (admin|operator|reporter). Token is returned once.', async (r, rep, p) => {
+route('POST', '/api/v1/tenants/:tenant/tokens', 'token:issue', 'Issue an API token (admin|operator|reporter by tenant admins; first admin and approver tokens by the platform admin). Token is returned once.', async (r, rep, p) => {
   const b = body(r);
   rep.code(201);
   return issueToken(p, T(r), String(b.name ?? ''), String(b.role ?? '') as never);
@@ -80,8 +80,8 @@ route('GET', '/api/v1/tenants/:tenant/migrations', 'contract:read', 'Contract mi
   withTenant(T(r), async (tx) => (await tx.query(`SELECT m.id, m.classification, m.status, m.requested_by, m.requested_at, m.approved_by, m.approved_at, m.applied_at, m.rolled_back_at, m.error,
     fv.version AS from_version, tv.version AS to_version, m.plan FROM core.contract_migrations m LEFT JOIN core.contract_versions fv ON fv.id = m.from_version_id
     JOIN core.contract_versions tv ON tv.id = m.to_version_id WHERE m.tenant_id = $1 ORDER BY m.id DESC`, [T(r)])).rows));
-route('POST', '/api/v1/tenants/:tenant/migrations/:id/approve', 'contract:approve', 'Approve and apply a pending breaking migration. Body: {confirm_version}. Requester cannot self-approve.', async (r, _rep, p) =>
-  approveMigration(p, T(r), Number(params(r).id), String(body(r).confirm_version ?? ''), process.env.ALLOW_SELF_APPROVAL !== 'true' || loadConfig().env === 'production'));
+route('POST', '/api/v1/tenants/:tenant/migrations/:id/approve', 'contract:approve', 'Approve and apply a pending breaking migration (approver role). Body: {confirm_version}.', async (r, _rep, p) =>
+  approveMigration(p, T(r), Number(params(r).id), String(body(r).confirm_version ?? ''), true));
 route('POST', '/api/v1/tenants/:tenant/migrations/:id/reject', 'contract:approve', 'Reject a pending migration. Body: {reason}.', async (r, _rep, p) => rejectMigration(p, T(r), Number(params(r).id), String(body(r).reason ?? 'rejected')));
 route('POST', '/api/v1/tenants/:tenant/migrations/:id/rollback', 'contract:approve', 'Roll back an applied migration (only before any batch uses the new version).', async (r, _rep, p) => rollbackMigration(p, T(r), Number(params(r).id)));
 
@@ -125,6 +125,7 @@ route('GET', '/api/v1/tenants/:tenant/batches/:id', 'batch:read', 'Batch detail:
   }));
 route('GET', '/api/v1/tenants/:tenant/batches/:id/findings', 'quarantine:read', 'Per-record quality findings for a batch (affected records). Query: rule_id?, limit?.', async (r) => {
   const q = query(r);
+  if (!/^[0-9a-f-]{36}$/.test(params(r).id)) throw notFound('batch');
   return withTenant(T(r), async (tx) => (await tx.query(`SELECT f.raw_record_id, rr.row_number AS source_row, f.rule_id, f.severity, f.category, f.field, f.message
       FROM core.quality_findings f JOIN core.raw_records rr ON rr.id = f.raw_record_id WHERE f.batch_id = $1 AND f.tenant_id = $2 AND ($3::text IS NULL OR f.rule_id = $3)
       ORDER BY rr.row_number, f.id LIMIT $4`, [params(r).id, T(r), q.rule_id ?? null, int(q.limit, 1000, 10000)])).rows);
@@ -139,8 +140,9 @@ route('POST', '/api/v1/tenants/:tenant/batches/:id/replay', 'batch:replay', 'Re-
 // ---- exceptions & quarantine
 route('GET', '/api/v1/tenants/:tenant/quarantine', 'quarantine:read', 'Quarantined records with actionable reasons. Query: status=open|resolved|all, batch_id?.', async (r, _rep, p) => {
   const q = query(r);
-  const rep = await exceptionReport(T(r), { status: (q.status as never) ?? 'open', limit: int(q.limit, 500, 5000), canSeeSensitive: can(p, 'record:read_sensitive') });
-  return q.batch_id ? rep.quarantined.filter((x) => x.batch_id === q.batch_id) : rep.quarantined;
+  if (q.batch_id && !/^[0-9a-f-]{36}$/.test(q.batch_id)) throw badRequest('invalid_parameter', 'batch_id must be a UUID');
+  const rep = await exceptionReport(T(r), { status: (q.status as never) ?? 'open', limit: int(q.limit, 500, 5000), batchId: q.batch_id, canSeeSensitive: can(p, 'record:read_sensitive') });
+  return rep.quarantined;
 });
 route('POST', '/api/v1/tenants/:tenant/quarantine/:id/resolve', 'quarantine:resolve', 'Mark a quarantined record resolved. Body: {resolution}. The record is not admitted; resubmit corrected data.', async (r, _rep, p) =>
   withTenant(T(r), async (tx) => {

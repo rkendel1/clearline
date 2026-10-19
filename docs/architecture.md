@@ -82,7 +82,7 @@ Dependencies point downward only. Nothing below `api/` imports from `api/`, and 
 | Infrastructure | `src/platform` | Config, database access (tenant and system scopes), migrations, structured logging, metrics |
 | Client | `dashboard/` | Renders API responses. Computes nothing beyond display formatting. |
 
-**Business logic is not duplicated.** Metric, extract and dataset-check SQL all come from `src/reporting/sql.ts`; row-level validation lives only in `src/transform`; trust status is set only by the processor and re-verification. The API, dashboard and worker call into these modules rather than reimplementing them.
+**Business logic is not duplicated.** The trusted-dataset definition, condition and aggregation compilation, and the orphan predicate live in `src/reporting/sql.ts`, used by metrics, extracts, lineage and dataset checks. The generated `rpt_trusted_*` views express the same rule in DDL for BI users, and Scenario J checks that they agree. Row-level validation lives only in `src/transform`. Trust status is set only by the processor and re-verification, and the overall verdict by the operations report. The dashboard renders API values and only formats them.
 
 ## The batch lifecycle
 
@@ -100,7 +100,9 @@ submitted ──structural failure──▶ rejected (untrusted, nothing staged)
 Two independent status axes are recorded and shown everywhere:
 
 - **Pipeline status**: did processing run and commit?
-- **Trust status**: did the batch also pass every reconciliation check and stay under its reject-rate threshold? Only trusted batches feed trusted metrics and default extracts. Post-load re-verification can later revoke trust (drift detection).
+- **Trust status**: did the batch also pass every reconciliation check and stay under its reject-rate threshold? Post-load re-verification can later revoke trust (drift detection) and restore it once the drift is repaired.
+
+**Trusted outputs** (metrics, default extracts, `rpt_trusted_*` views) use, for each record key, the *latest version that came from a trusted batch*. A newer version from an untrusted batch is visible in "including untrusted" figures but never removes or replaces trusted data, and a later trusted delivery of the same content re-establishes it. Failing dataset-level checks qualify the trusted figures over the entities they involve, so nothing is reported as fully trusted while an invariant fails.
 
 ## Transaction boundaries and delivery semantics
 
@@ -112,7 +114,7 @@ Two independent status axes are recorded and shown everywhere:
 
 ## Tenant model
 
-A tenant is configuration: a row in `core.tenants`, a schema `t_<tenant>`, a NOLOGIN reporting role, API tokens and contract versions. Creating a tenant and publishing its contract requires no code change. Scenario B creates a third tenant at runtime, and a source scan for tenant names in `src/` finds none.
+A tenant is configuration: a row in `core.tenants`, a schema `t_<tenant>`, a NOLOGIN reporting role, API tokens and contract versions. The platform administrator creates the tenant and its first admin and approver tokens; the tenant admin then issues operator and reporter tokens. Creating a tenant and publishing its contract requires no code change. Scenario B creates a third tenant at runtime, and a source scan for tenant names in `src/` finds none.
 
 ## Key design decisions
 

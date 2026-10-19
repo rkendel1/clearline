@@ -130,6 +130,13 @@ test('Scenario I: discrepancies are detected, explained, and removed from truste
   assert.equal(orph.status, 'failed');
   assert.deepEqual(orph.actual, { orphans: 12 });
   assert.match(orph.explanation, /12 current claim record\(s\) reference a member that has not been received/);
+  // A failing dataset check qualifies trusted figures over that entity: never an unqualified green number.
+  const qual = metricMap((await rep.get(`${NW}/reports/business`)).body) as unknown as Record<string, { trusted: boolean; dataset_checks_failing: { check_id: string }[] }>;
+  assert.equal(qual.claims_total.trusted, false);
+  assert.deepEqual(qual.claims_total.dataset_checks_failing.map((q) => q.check_id), ['dataset:orphans:claim.claim_member']);
+  assert.equal(qual.members_total.dataset_checks_failing.length, 0, 'unrelated entities are not qualified');
+  const qx = await rep.get(`${NW}/extracts/claims/csv`);
+  assert.equal(qx.headers['x-clearline-dataset-checks-failing'], 'dataset:orphans:claim.claim_member');
   const exc2 = (await rep.get(`${NW}/reports/exceptions`)).body;
   assert.equal(exc2.orphaned_references.length, 12);
   assert.deepEqual([...new Set(exc2.orphaned_references.map((o: { missing_reference: string }) => o.missing_reference))].sort(), [...new Set(orphanClaims.map((c) => c.MBR_ID))].sort());
@@ -138,6 +145,30 @@ test('Scenario I: discrepancies are detected, explained, and removed from truste
   await ctx.worker.drain();
   ds = (await rep.get(`${NW}/reconciliation`)).body.dataset;
   assert.equal(ds.find((d: { check_id: string }) => d.check_id === 'dataset:orphans:claim.claim_member').status, 'passed');
+
+  // ---- 4. Recovery from the in-transit loss: the sender resends the COMPLETE file. Rows identical to the
+  // untrusted batch's versions are not "duplicates" of untrusted evidence: they are re-established by the trusted batch.
+  const resend = await op.csv('northwind', 'nw_medical_claims_csv', toCsv(sent as never, NW_CLAIM_COLUMNS),
+    { control: { record_count: 250, sums: { paid_amount: fromCents(sumCents(sent)) } } });
+  await ctx.worker.drain();
+  const rb = (await op.get(`${NW}/batches/${resend.body.batch_id}`)).body;
+  assert.equal(rb.trust_status, 'trusted');
+  assert.deepEqual([rb.accepted_count, rb.duplicate_count], [250, 0]);
+  m = metricMap((await rep.get(`${NW}/reports/business`)).body);
+  assert.equal(m.claims_total.value, String(200 + 12 + 250), 'all sent claims now count as trusted');
+  assert.equal(m.total_paid.value, fromCents(paidCents(good) + paidCents(orphanClaims) + paidCents(sent)));
+
+  // ---- 5. A correction that arrives in an UNTRUSTED batch does not displace the trusted value.
+  const corrected = { ...good[20], CLM_STATUS: 'P', PAID_AMT: '1.00', ADJ_SEQ: '2' };
+  const bad = await op.csv('northwind', 'nw_medical_claims_csv', toCsv([corrected] as never, NW_CLAIM_COLUMNS), { control: { record_count: 2 } });
+  await ctx.worker.drain();
+  assert.equal((await op.get(`${NW}/batches/${bad.body.batch_id}`)).body.trust_status, 'untrusted');
+  const after = metricMap((await rep.get(`${NW}/reports/business`)).body);
+  assert.equal(after.total_paid.value, m.total_paid.value, 'trusted total keeps the last trusted version of that claim');
+  assert.equal(after.claims_total.value, m.claims_total.value, 'the claim is not dropped from trusted outputs');
+  assert.notEqual(after.total_paid.value_including_untrusted, after.total_paid.value);
+  const lin = (await op.get(`${NW}/lineage/claim/${good[20].CLM_ID}`)).body;
+  assert.notEqual(lin.trusted_record_id, lin.current_record_id, 'lineage shows which version trusted metrics use');
 
   // Persisted reconciliation history is queryable and tied to runs and contract versions.
   const hist = await sql(`SELECT count(*)::int AS n FROM core.reconciliation_results WHERE status = 'failed' AND tenant_id = 'northwind' AND contract_version_id IS NOT NULL AND run_id IS NOT NULL`);
@@ -148,6 +179,8 @@ test('Scenario I: discrepancies are detected, explained, and removed from truste
     `Explanation: "${rc.source_control_count.explanation}" and paid difference ${rc['source_control_sum:paid_amount'].difference.amount} (= the 3 lost rows' paid total, from the generator).`,
     `Trusted outputs held it back: claims_total 200 (447 including untrusted, 247 excluded, metric flagged trusted=false); default extract 200 rows, include_untrusted extract 447; operations report succeeded=4 vs untrusted=1.`,
     `Drift: 2 rows deleted and 1 paid_amount edited (+1000.00) directly in SQL. Re-verification: rows ${byCheck['reverify:target_row_count'].difference.rows}, paid difference ${byCheck['reverify:target_sum:paid_amount'].difference.amount} (expected ${fromCents(100_000 - victimPaid)}); batch ${goodSub.body.batch_id} became untrusted, batch.drift_detected audited. After restoring the rows from a backup copy, re-verification passed and trust was restored (batch.trust_restored audited); claims_total back to 200, total_paid back to truth. The in-transit batch stayed untrusted.`,
-    `Missing references: 12 claims for 5 undelivered members admitted with warnings; dataset check orphans=12 failed with explanation and all 12 listed in the exception report; after the late eligibility file the check passed.`,
+    `Missing references: 12 claims for 5 undelivered members admitted with warnings; dataset check orphans=12 failed with explanation and all 12 listed in the exception report. While it failed, every claim metric reported trusted=false with the failing check named, and the claims extract carried X-Clearline-Dataset-Checks-Failing; member metrics were unaffected. After the late eligibility file the check passed.`,
+    `Recovery from the in-transit loss: resending the complete 250-row file produced a trusted batch with 250 accepted and 0 duplicates (versions held only by the untrusted batch are re-established, not treated as duplicates); trusted claims_total became 462 and total_paid equals ground truth.`,
+    `A re-adjudication (paid 1.00) arriving in an untrusted batch left trusted total_paid and claims_total unchanged (trusted outputs use the latest trusted version); lineage reports trusted_record_id distinct from current_record_id.`,
   ]);
 });

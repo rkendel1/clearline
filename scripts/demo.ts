@@ -105,7 +105,7 @@ if (process.argv.includes('--with-migration')) {
   const v2 = JSON.parse(readFileSync(path.join(ROOT, 'contracts/northwind/v2.json'), 'utf8'));
   const p = await call(DEV_TOKENS.northwind.admin, 'POST', '/api/v1/tenants/northwind/contracts', v2);
   line(`\nContract evolution: published northwind 2.0.0 -> HTTP ${p.status}, ${p.body.lifecycle}, migration ${p.body.migration_id} (${p.body.plan?.changes.filter((c: { classification: string }) => c.classification === 'breaking').length} breaking changes).`);
-  line('  Review the plan under Contracts in the dashboard and approve it signed in as the northwind approver token.');
+  line('  Review the plan under Contracts in the dashboard and approve it signed in with the approver token (cl_dev_northwind_approver).');
 }
 
 line(`\nDashboard: ${process.env.DASHBOARD_URL ?? BASE}/  — sign in with ${DEV_TOKENS.northwind.operator} (operator) or ${DEV_TOKENS.northwind.reporter} (reporter).`);

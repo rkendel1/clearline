@@ -9,6 +9,7 @@ Three layers: **platform tables** in schema `core` (fixed, versioned migrations 
 | Migration | Applied | Checksum |
 |---|---|---|
 | 0001_core.sql | 2026-10-19 | `b900972405558a85…` |
+| 0002_review_hardening.sql | 2026-10-19 | `194358b67e16f02b…` |
 
 Tenant storage changes are not platform migrations: they are contract migrations, planned and recorded in `core.contract_migrations` (see docs/contracts.md).
 
@@ -16,7 +17,7 @@ Tenant storage changes are not platform migrations: they are contract migrations
 
 ### core.api_tokens
 
-Hashed API tokens with tenant and role. Readable only in system scope.
+Hashed API tokens with tenant, role and issuer. Readable only in system scope.
 
 | Column | Type | Nullable |
 |---|---|---|
@@ -27,10 +28,12 @@ Hashed API tokens with tenant and role. Readable only in system scope.
 | role | text | no |
 | created_at | timestamp with time zone | no |
 | revoked_at | timestamp with time zone | yes |
+| issued_by_token_id | bigint | yes |
+| issued_by | text | yes |
 
 ### core.audit_events
 
-Append-only audit trail (UPDATE/DELETE/TRUNCATE blocked by trigger; only retention may delete past audit_days).
+Append-only audit trail. The trigger blocks UPDATE and TRUNCATE, and allows DELETE only in a retention run for rows older than the tenant audit_days.
 
 | Column | Type | Nullable |
 |---|---|---|
@@ -47,7 +50,7 @@ Append-only audit trail (UPDATE/DELETE/TRUNCATE blocked by trigger; only retenti
 
 ### core.batch_adjustments
 
-Legitimate removals (erasure, retention) per batch so re-verification does not flag them as drift.
+Per-batch record of legitimate changes (erasure, retention removals; versions created or removed by contract migrations) so re-verification can tell them from drift.
 
 | Column | Type | Nullable |
 |---|---|---|
@@ -58,6 +61,8 @@ Legitimate removals (erasure, retention) per batch so re-verification does not f
 | rows_removed | integer | no |
 | sums_removed | jsonb | no |
 | created_at | timestamp with time zone | no |
+| migration_rows_added | integer | no |
+| migration_rows_removed | integer | no |
 
 ### core.batch_attempts
 
@@ -363,7 +368,7 @@ Readable by tenant reporting roles; row-level security limits every row to the r
 | _migration_id | Migration that created this version, if any. |
 | _supersedes_record_id | Prior version replaced by a migration-created version. |
 
-Each entity also gets two views: `current_<entity>` (all fields, current versions) and `rpt_<entity>` (non-sensitive fields only, granted to the tenant reporting role), both carrying `_trust_status`.
+Each entity also gets three views: `current_<entity>` (all fields, current versions), `rpt_<entity>` (non-sensitive fields, current versions) and `rpt_trusted_<entity>` (non-sensitive fields, latest version from a trusted batch per key: the same rule as trusted metrics). The `rpt_` views are granted to the tenant reporting role and carry `_trust_status`.
 
 ## Canonical model: northwind (contract 1.0.0)
 

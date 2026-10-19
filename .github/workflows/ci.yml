@@ -53,6 +53,8 @@ jobs:
         run: npm run test:integration
       - name: Demonstration scenarios A–J
         run: npm run test:scenarios
+      - name: Mutation checks (planted defects must be caught by the tests)
+        run: npm run test:mutation
       - name: Build dashboard
         run: npm --prefix dashboard run build
       - name: Install Chromium
@@ -103,7 +105,7 @@ jobs:
       - name: Build image
         run: docker compose build
       - name: Start stack
-        run: docker compose up -d --wait api
+        run: docker compose up -d --wait
       - name: Run the demonstration against the stack
         run: docker compose --profile demo run --rm demo
       - name: Graceful shutdown

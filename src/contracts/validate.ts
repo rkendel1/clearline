@@ -108,6 +108,7 @@ export function validateContract(doc: unknown): { ok: true; contract: Contract }
     for (const f of x.filterable ?? []) {
       if (!e.fields[f]) add(`${p}/filterable`, `unknown field "${f}"`);
       else if (e.fields[f].type === 'boolean' || e.fields[f].type === 'decimal') add(`${p}/filterable`, `field "${f}" type ${e.fields[f].type} is not filterable`);
+      else if (['pii', 'phi'].includes(e.fields[f].sensitivity ?? 'internal')) add(`${p}/filterable`, `field "${f}" is ${e.fields[f].sensitivity}: filtering on it would let callers infer redacted values`);
     }
   });
 

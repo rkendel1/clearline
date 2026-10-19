@@ -11,17 +11,19 @@ import { ident, withTenant } from '../platform/db.js';
 import { loadConfig } from '../platform/config.js';
 import { metrics } from '../platform/metrics.js';
 import type { Logger } from '../platform/logger.js';
-import { getContractVersion, lockTenantShared } from '../contracts/registry.js';
+import { getActiveContract, getContractVersion, lockTenantShared } from '../contracts/registry.js';
 import { table } from '../contracts/compile.js';
 import type { Contract, EntityDef } from '../contracts/types.js';
 import { auditTx } from '../control/audit.js';
 import { primaryCategory, transformRow, type Finding, type RawRow, type RowResult } from '../transform/engine.js';
 import { addDecimal, compareCanonical, type Canonical } from '../transform/coerce.js';
 import { reconcileBatch, type BatchTallies } from '../reconciliation/batch.js';
+import { detectSensitiveValue } from '../quality/sensitive.js';
 
 export class LostLeaseError extends Error {}
 export class InterruptedError extends Error {}
 export class BatchTimeoutError extends Error {}
+export class ContractSupersededError extends Error { override name = 'ContractSupersededError'; }
 
 interface RawRec { id: number; row_number: number; payload: RawRow | null; parse_error: string | null }
 
@@ -35,7 +37,10 @@ interface Work {
   duplicateOf?: { recordId?: number; insertIdx?: number };
 }
 
-interface Version { recordId?: number; insertIdx?: number; hash: string; order: Canonical; isCurrent: boolean }
+// `untrusted`: the version came from a batch that is not trusted. Such versions are kept and stay
+// visible in 'all' outputs, but they never make a later delivery a duplicate, never cause a
+// conflict and never outrank it: trusted evidence always gets to (re)establish a record.
+interface Version { recordId?: number; insertIdx?: number; hash: string; order: Canonical; isCurrent: boolean; untrusted: boolean }
 interface Insert { work: Work; isCurrent: boolean; isLate: boolean; recordId?: number }
 
 export interface ProcessOutcome {
@@ -76,7 +81,19 @@ export async function processBatch(batchId: string, tenantId: string, workerId: 
     if (!batch || batch.status !== 'processing' || batch.lease_owner !== workerId) throw new LostLeaseError(`batch ${batchId} is no longer leased to ${workerId}`);
     await tx.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`clearline.entity.${tenantId}.${batch.entity}`]);
 
-    const cv = await getContractVersion(tx, Number(batch.contract_version_id));
+    let cv = await getContractVersion(tx, Number(batch.contract_version_id));
+    // The contract may have changed while this batch waited in the queue.
+    const active = await getActiveContract(tx, tenantId);
+    if (active && active.id !== cv.id) {
+      const between = (await tx.query(`SELECT id, classification FROM core.contract_migrations WHERE tenant_id = $1 AND status = 'applied' AND to_version_id > $2 AND to_version_id <= $3`, [tenantId, cv.id, active.id])).rows;
+      const breaking = between.filter((m) => m.classification !== 'compatible');
+      if (breaking.length) {
+        throw new ContractSupersededError(`batch was submitted under contract ${cv.version}, but breaking migration(s) ${breaking.map((m) => m.id).join(', ')} have since been applied (active ${active.version}); replay re-processes it under ${active.version}`);
+      }
+      await tx.query(`UPDATE core.batches SET contract_version_id = $2, transform_version = $3 WHERE id = $1`, [batchId, active.id, active.transform_version]);
+      await auditTx(tx, { tenantId, actor: `worker:${workerId}`, role: 'system', action: 'batch.repinned', resource: `batch:${batchId}`, outcome: 'succeeded', details: { from_version: cv.version, to_version: active.version, reason: 'only compatible migrations since submission' }, correlationId: batch.correlation_id });
+      cv = active;
+    }
     const contract = cv.document;
     const source = contract.sources[batch.source_id];
     const entity = contract.entities[source.entity];
@@ -112,10 +129,11 @@ export async function processBatch(batchId: string, tenantId: string, workerId: 
     const state = new Map<string, Version[]>();
     for (let i = 0; i < keys.length; i += 5000) {
       const { rows } = await tx.query(
-        `SELECT "_record_id", "_key", "_record_hash", "_is_current"${orderBy ? `, ${ident(orderBy)} AS o` : ''} FROM ${t} WHERE "_key" = ANY($1)`, [keys.slice(i, i + 5000)]);
+        `SELECT x."_record_id", x."_key", x."_record_hash", x."_is_current", xb.trust_status <> 'trusted' AS untrusted${orderBy ? `, x.${ident(orderBy)} AS o` : ''}
+           FROM ${t} x JOIN core.batches xb ON xb.id = x."_batch_id" WHERE x."_key" = ANY($1)`, [keys.slice(i, i + 5000)]);
       for (const r of rows) {
         const list = state.get(r._key) ?? [];
-        list.push({ recordId: Number(r._record_id), hash: r._record_hash, order: orderBy ? normalizeDb(orderType, r.o) : null, isCurrent: r._is_current });
+        list.push({ recordId: Number(r._record_id), hash: r._record_hash, order: orderBy ? normalizeDb(orderType, r.o) : null, isCurrent: r._is_current, untrusted: r.untrusted });
         state.set(r._key, list);
       }
     }
@@ -124,9 +142,12 @@ export async function processBatch(batchId: string, tenantId: string, workerId: 
       const key = w.res.key, hash = w.res.hash;
       const versions = state.get(key) ?? [];
       state.set(key, versions);
-      const same = versions.find((v) => v.hash === hash);
+      const same = versions.find((v) => v.hash === hash && !v.untrusted);
       if (same) { w.disposition = 'duplicate'; w.duplicateOf = { recordId: same.recordId, insertIdx: same.insertIdx }; continue; }
       const current = versions.find((v) => v.isCurrent);
+      const trusted = versions.filter((v) => !v.untrusted);
+      // Reference point for ordering: the latest trusted version (not an untrusted current one).
+      const ref = trusted.length ? trusted.reduce((a, b) => (compareCanonical(orderType, b.order, a.order) > 0 ? b : a)) : null;
       const order = orderBy ? w.res.values[orderBy] : null;
       const addVersion = (isCurrent: boolean, isLate: boolean) => {
         if (isCurrent && current) {
@@ -135,14 +156,14 @@ export async function processBatch(batchId: string, tenantId: string, workerId: 
           else inserts[current.insertIdx!].isCurrent = false;
         }
         const idx = inserts.push({ work: w, isCurrent, isLate }) - 1;
-        versions.push({ insertIdx: idx, hash, order, isCurrent });
+        versions.push({ insertIdx: idx, hash, order, isCurrent, untrusted: false });
         w.insertIdx = idx;
         w.disposition = isLate ? 'accepted_late' : 'accepted';
       };
       const conflictWith = (why: string) => {
         w.errors.push({ rule_id: 'conflict:key', rule_kind: 'conflict', category: 'conflict', severity: 'error', message: why });
       };
-      if (!current) { addVersion(true, false); continue; }
+      if (!current || !ref) { addVersion(true, false); continue; }
       switch (entity.correction.strategy) {
         case 'immutable':
           conflictWith(`a record with this key already exists with different content and ${source.entity} records are immutable`);
@@ -151,11 +172,11 @@ export async function processBatch(batchId: string, tenantId: string, workerId: 
           addVersion(true, false);
           break;
         case 'supersede_by_order': {
-          if (versions.some((v) => v.hash !== hash && compareCanonical(orderType, v.order, order) === 0)) {
+          if (trusted.some((v) => v.hash !== hash && compareCanonical(orderType, v.order, order) === 0)) {
             conflictWith(`another version with the same ${orderBy} exists with different content; cannot determine which is correct`);
             break;
           }
-          const c = compareCanonical(orderType, order, current.order);
+          const c = compareCanonical(orderType, order, ref.order);
           if (c > 0) addVersion(true, false);
           else addVersion(false, true); // older than current: retained as history, does not change current results
           break;
@@ -215,7 +236,13 @@ export async function processBatch(batchId: string, tenantId: string, workerId: 
     // Sensitive values detected in unmapped columns are scrubbed from retained raw payloads.
     const scrubs = work.flatMap((w) => [...w.errors, ...w.warnings].filter((f) => f.rule_id === 'privacy:unmapped_sensitive')
       .map((f) => ({ id: w.raw.id, col: /column "([^"]+)"/.exec(f.message)?.[1] })).filter((s) => s.col));
-    for (const s of scrubs) await tx.query(`UPDATE core.raw_records SET payload = payload || jsonb_build_object($2::text, '[scrubbed: sensitive value detected]') WHERE id = $1`, [s.id, s.col]);
+    // Likewise for mapped columns feeding a non-sensitive field in which sensitive-looking data was found.
+    for (const w of work) for (const f of [...w.errors, ...w.warnings]) {
+      if (!f.rule_id.startsWith('privacy:') || f.rule_id === 'privacy:unmapped_sensitive' || !f.field) continue;
+      const m = source.mappings.find((x) => x.target === f.field);
+      for (const col of typeof m?.from === 'string' ? [m.from] : m?.from ?? []) scrubs.push({ id: w.raw.id, col });
+    }
+    for (const s of scrubs) await tx.query(`UPDATE core.raw_records SET payload = payload || jsonb_build_object($2::text, '[scrubbed: sensitive value detected]') WHERE id = $1 AND payload ? $2`, [s.id, s.col]);
 
     // 5. Quality results (one row per rule, including rules with zero failures).
     const counts = {
@@ -314,7 +341,7 @@ async function checkRelationships(tx: Tx, tenantId: string, contract: Contract, 
       if (found.has(String(w.res!.values[rel.field]))) continue;
       const f: Finding = {
         rule_id: `relationship:${rel.id}`, rule_kind: 'relationship', category: 'referential', severity: rel.on_missing === 'quarantine' ? 'error' : 'warning', field: rel.field,
-        message: `${rel.field} references a ${rel.references.entity} that does not exist${SENSITIVE_SAFE(contract, entityName, rel.field) ? ` ("${w.res!.values[rel.field]}")` : ''}`,
+        message: `${rel.field} references a ${rel.references.entity} that does not exist${SENSITIVE_SAFE(contract, entityName, rel.field) && !detectSensitiveValue(String(w.res!.values[rel.field])) ? ` ("${w.res!.values[rel.field]}")` : ''}`,
       };
       (f.severity === 'error' ? w.errors : w.warnings).push(f);
     }

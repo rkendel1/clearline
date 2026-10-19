@@ -11,7 +11,7 @@
 | 0:27 | **Failure 2: bad data** | Exceptions: impossible date, paid more than billed, denied claim with payment, each with rule and source row; none reach trusted metrics |
 | 0:33 | Lineage | Claim C000000104: denied (v1) then re-adjudicated paid (v2), each version traced to source row, batch, contract and metric contribution |
 | 0:40 | **Failure 3: privacy** | A reporter requests unredacted fields: denied by the backend and audited |
-| 0:47 | **Failure 4: breaking contract change** | Northwind 2.0.0 waits for approval; the plan lists changes, DDL, impact and rollback. A second admin approves (0:55); it applies as new record versions |
+| 0:47 | **Failure 4: breaking contract change** | Northwind 2.0.0 waits for approval; the plan lists changes, DDL, impact and rollback. The approver (a role with no data access) approves; it applies as new record versions |
 | 1:00 | Close | Scenarios A–J verify these numbers against independent SQL and ground truth |
 
 Scenarios not shown in the video, because they have no visual surface, are demonstrated by tests whose results are in [`../test-results.md`](../test-results.md): duplicate delivery (C), crash and graceful-shutdown recovery (F), cross-tenant SQL access (G), drift detection and trust restoration (I).

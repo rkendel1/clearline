@@ -36,10 +36,13 @@ export async function seed(opts: { contracts?: boolean } = {}) {
     if (exists) continue;
     await createTenant(system, { id: t.id, name: t.name });
     const toks = DEV_TOKENS[t.id];
+    // Bootstrap exactly as an operator would: the platform admin issues the first admin and the
+    // approver; the tenant admin issues everything else.
     await issueToken(system, t.id, `${t.id}-admin`, 'admin', toks.admin);
-    await issueToken(system, t.id, `${t.id}-approver`, 'admin', toks.approver);
-    await issueToken(system, t.id, `${t.id}-operator`, 'operator', toks.operator);
-    await issueToken(system, t.id, `${t.id}-reporter`, 'reporter', toks.reporter);
+    await issueToken(system, t.id, `${t.id}-approver`, 'approver', toks.approver);
+    const tenantAdmin: Principal = { actor: `${t.id}-admin`, tokenId: 0, tenantId: t.id, role: 'admin', correlationId: 'seed' };
+    await issueToken(tenantAdmin, t.id, `${t.id}-operator`, 'operator', toks.operator);
+    await issueToken(tenantAdmin, t.id, `${t.id}-reporter`, 'reporter', toks.reporter);
     if (opts.contracts !== false) {
       const doc = JSON.parse(await readFile(path.join(root, 'contracts', t.id, 'v1.json'), 'utf8'));
       const admin: Principal = { actor: `${t.id}-admin`, tokenId: 0, tenantId: t.id, role: 'admin', correlationId: 'seed' };

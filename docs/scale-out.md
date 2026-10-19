@@ -4,7 +4,7 @@ The first release is a modular monolith on PostgreSQL: the database is the queue
 
 ## Where the current design runs out
 
-Measured (see [benchmark.md](benchmark.md)): about 8,100–9,100 canonical rows per second per worker on a 2-vCPU VM with PostgreSQL on the same host, linear in batch size up to 100,000 rows. With four workers, intake from a single sequential client was the bottleneck.
+Measured (see [benchmark.md](benchmark.md)): about 8,000–9,300 canonical rows per second per worker on a 2-vCPU VM with PostgreSQL on the same host, linear in batch size up to 100,000 rows. With four workers, intake from a single sequential client was the bottleneck.
 
 Expected limits, in the order they are likely to bite:
 

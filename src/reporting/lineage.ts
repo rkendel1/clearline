@@ -8,7 +8,7 @@ import { notFound } from '../platform/errors.js';
 import { getActiveContract, getContractVersion } from '../contracts/registry.js';
 import { SENSITIVE } from '../contracts/types.js';
 import { table } from '../contracts/compile.js';
-import { conditionSql, Params } from './sql.js';
+import { conditionSql, currentFrom, Params } from './sql.js';
 import { mappedColumns } from '../transform/engine.js';
 
 export async function recordLineage(tenant: string, entity: string, key: string, canSeeSensitive: boolean) {
@@ -16,7 +16,7 @@ export async function recordLineage(tenant: string, entity: string, key: string,
     const active = await getActiveContract(tx, tenant);
     if (!active) throw notFound('no active contract');
     const c = active.document;
-    const e = c.entities[entity];
+    const e = Object.hasOwn(c.entities, entity) ? c.entities[entity] : undefined;
     if (!e) throw notFound(`entity ${entity}`);
     const sens = (f: string) => SENSITIVE.has(e.fields[f]?.sensitivity ?? 'internal');
     const { rows: versions } = await tx.query(`SELECT * FROM ${table(tenant, entity)} WHERE "_key" = $1 ORDER BY "_record_id"`, [key]);
@@ -24,6 +24,9 @@ export async function recordLineage(tenant: string, entity: string, key: string,
         WHERE q.tenant_id = $1 AND q.entity = $2 AND q.record_key = $3 ORDER BY q.id`, [tenant, entity, key])).rows;
     if (!versions.length && !quarantined.length) throw notFound(`no ${entity} with key ${key}`);
 
+    const ep = new Params();
+    const eff = (await tx.query(`SELECT r."_record_id" AS id ${currentFrom(tenant, entity, 'trusted', undefined, ep)} AND r."_key" = ${ep.add(key)}`, ep.values)).rows[0];
+    const effectiveId = eff ? Number(eff.id) : null;
     const out = [];
     for (const v of versions) {
       const id = Number(v._record_id);
@@ -50,14 +53,16 @@ export async function recordLineage(tenant: string, entity: string, key: string,
       }
       const duplicates = (await tx.query(`SELECT r.batch_id, r.row_number FROM core.raw_records r WHERE r.canonical_record_id = $1 AND r.disposition = 'duplicate' ORDER BY r.id`, [id])).rows;
       const recon = (await tx.query(`SELECT check_id, status, explanation FROM core.reconciliation_results WHERE batch_id = $1 ORDER BY id`, [v._batch_id])).rows;
+      // Metric contribution follows the same definition as the metrics themselves (currentFrom 'trusted'):
+      // the version counted is the latest one from a trusted batch, which need not be the current one.
       const contributes: { metric_id: string; included: boolean; reason: string }[] = [];
-      if (v._is_current) {
+      const isEffective = id === effectiveId;
+      if (v._is_current || isEffective) {
         for (const m of c.outputs.metrics.filter((m) => m.entity === entity)) {
           const p = new Params();
           const cond = m.filter ? conditionSql(m.filter, e, p) : 'true';
           const r = (await tx.query(`SELECT coalesce(${cond}, false) AS hit FROM ${table(tenant, entity)} r JOIN core.batches b ON b.id = r."_batch_id" WHERE r."_record_id" = ${p.add(id, 'bigint')}`, p.values)).rows[0];
-          const trusted = batch.trust_status === 'trusted';
-          contributes.push({ metric_id: m.id, included: r.hit && trusted, reason: !r.hit ? 'excluded by metric filter' : trusted ? 'included' : 'excluded: batch not trusted' });
+          contributes.push({ metric_id: m.id, included: r.hit && isEffective, reason: !isEffective ? 'excluded: batch not trusted (trusted metrics use the latest trusted version)' : !r.hit ? 'excluded by metric filter' : 'included' });
         }
       }
       const exports = (await tx.query(`SELECT id, extract_id, requested_by, created_at, as_of, content_sha256 FROM core.export_log
@@ -73,6 +78,7 @@ export async function recordLineage(tenant: string, entity: string, key: string,
     return {
       tenant, entity, key, active_contract_version: active.version,
       current_record_id: out.find((v) => v.is_current)?.record_id ?? null,
+      trusted_record_id: effectiveId,
       versions: out,
       quarantined_submissions: quarantined.map((q) => ({ ...q, errors: (q.errors as { rule_id: string; message: string }[]).map((x) => ({ rule_id: x.rule_id, message: x.message })) })),
       ordering: e.correction,
@@ -84,7 +90,7 @@ export async function listRecords(tenant: string, entity: string, opts: { limit:
   return withTenant(tenant, async (tx) => {
     const active = await getActiveContract(tx, tenant);
     if (!active) throw notFound('no active contract');
-    const e = active.document.entities[entity];
+    const e = Object.hasOwn(active.document.entities, entity) ? active.document.entities[entity] : undefined;
     if (!e) throw notFound(`entity ${entity}`);
     const fields = Object.keys(e.fields);
     const { rows } = await tx.query(`SELECT r."_record_id", r."_key", r."_batch_id", b.trust_status AS "_trust_status", ${fields.map((f) => `r.${ident(f)}`).join(', ')}

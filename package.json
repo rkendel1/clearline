@@ -29,7 +29,8 @@
     "docs:api": "tsx scripts/gen-api-docs.ts",
     "docs:examples": "tsx scripts/gen-examples.ts",
     "docs:reference": "tsx scripts/gen-reference-docs.ts",
-    "demo:record": "tsx scripts/record-demo.ts"
+    "demo:record": "tsx scripts/record-demo.ts",
+    "test:mutation": "tsx scripts/mutation-check.ts"
   },
   "dependencies": {
     "@fastify/static": "^10.1.6",

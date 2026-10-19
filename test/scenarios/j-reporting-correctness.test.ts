@@ -126,11 +126,11 @@ test('Scenario J: reports, SQL views and extracts agree with independent queries
   await bi.connect();
   try {
     const v = (await bi.query(`SELECT count(*)::text n, to_char(sum(paid_amount) FILTER (WHERE status IN ('PAID','REVERSED')), 'FM999999999990.00') paid,
-        to_char(sum(billed_amount), 'FM999999999990.00') billed FROM t_northwind.rpt_claim WHERE "_trust_status" = 'trusted'`)).rows[0];
+        to_char(sum(billed_amount), 'FM999999999990.00') billed FROM t_northwind.rpt_trusted_claim`)).rows[0];
     assert.deepEqual(v, { n: truth.northwind.claims_total, paid: truth.northwind.total_paid, billed: truth.northwind.total_billed });
     const ov = (await bi.query(`SELECT count(*)::int n FROM reporting.batch_overview`)).rows[0].n;
     assert.equal(ov, truth.batches.northwind);
-    comparison.push(`BI login with only clearline_rpt_northwind: rpt_claim trusted count/paid/billed = ${v.n}/${v.paid}/${v.billed} (= truth); reporting.batch_overview shows ${ov} batches.`);
+    comparison.push(`BI login with only clearline_rpt_northwind: rpt_trusted_claim count/paid/billed = ${v.n}/${v.paid}/${v.billed} (= truth); reporting.batch_overview shows ${ov} batches.`);
   } finally {
     await bi.end();
     await admin.query(`DROP OWNED BY bi_nw_j; DROP ROLE bi_nw_j`).catch(() => {});

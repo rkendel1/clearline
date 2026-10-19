@@ -34,6 +34,8 @@ export interface MigrationPlan {
   classification: 'initial' | 'compatible' | 'requires_approval' | 'rejected';
   changes: Change[];
   ddl: string[];
+  /** View statements executed on apply (views are dropped and regenerated; tables and columns are never dropped). */
+  view_ddl?: string[];
   data_ops: DataOp[];
   rejected_reasons: string[];
   rollback: string[];
@@ -85,7 +87,7 @@ export function planMigration(tenant: string, prev: Contract | null, next: Contr
   }
 
   // Processing-level changes: always recorded so reviewers see them, never data-affecting.
-  if (!eq(prev.sources, next.sources)) ch({ kind: 'sources_changed', classification: 'compatible', description: 'source mappings/transform declarations changed', action: 'new batches use the new transform version; existing records keep the transform version that produced them' });
+  diffSources(prev, next, plan);
   if (!eq(prev.outputs, next.outputs)) ch({ kind: 'outputs_changed', classification: 'compatible', description: 'declared metrics/extracts changed', action: 'reporting definitions regenerated' });
   if (!eq(prev.dataset_checks, next.dataset_checks)) ch({ kind: 'dataset_checks_changed', classification: 'compatible', description: 'dataset reconciliation checks changed', action: 'applies from next reconciliation run' });
 
@@ -105,6 +107,35 @@ export function planMigration(tenant: string, prev: Contract | null, next: Contr
   );
   if (plan.data_ops.length) plan.notes.push('Data operations never update rows in place: they write new record versions tagged with the migration id, so prior versions keep their original meaning and contract version.');
   return plan;
+}
+
+/** Source-level changes. Anything that weakens a trust or privacy control is breaking (needs approval). */
+function diffSources(prev: Contract, next: Contract, plan: MigrationPlan) {
+  const ch = (c: Change) => plan.changes.push(c);
+  const scanRank = (v?: string) => (v === 'warn' ? 0 : 1); // default is quarantine
+  for (const [sid, s] of Object.entries(next.sources)) {
+    const ps = prev.sources[sid];
+    if (!ps) { ch({ kind: 'source_added', classification: 'compatible', description: `source ${sid} added`, action: 'accepts batches from activation' }); continue; }
+    const pr = ps.max_reject_rate ?? 0.05, nr = s.max_reject_rate ?? 0.05;
+    if (nr > pr) ch({ kind: 'reject_threshold_raised', classification: 'breaking', description: `${sid}: max_reject_rate ${pr} -> ${nr}`, action: 'batches with more rejected rows will be trusted; requires approval' });
+    else if (nr < pr) ch({ kind: 'reject_threshold_lowered', classification: 'compatible', description: `${sid}: max_reject_rate ${pr} -> ${nr}`, action: 'stricter trust for new batches' });
+    const pf = ps.control_totals?.sum_fields ?? [], nf = s.control_totals?.sum_fields ?? [];
+    const dropped = pf.filter((f) => !nf.includes(f));
+    if (dropped.length) ch({ kind: 'control_totals_removed', classification: 'breaking', description: `${sid}: control totals no longer reconciled for [${dropped.join(', ')}]`, action: 'financial reconciliation coverage is reduced; requires approval' });
+    const added = nf.filter((f) => !pf.includes(f));
+    if (added.length) ch({ kind: 'control_totals_added', classification: 'compatible', description: `${sid}: control totals added for [${added.join(', ')}]`, action: 'reconciled from the next batch' });
+    for (const k of ['unmapped_columns', 'classified_fields'] as const) {
+      const a = ps.sensitive_scan?.[k], b = s.sensitive_scan?.[k];
+      if (scanRank(b) < scanRank(a)) ch({ kind: 'sensitive_scan_weakened', classification: 'breaking', description: `${sid}: sensitive_scan.${k} ${a ?? 'quarantine'} -> ${b}`, action: 'sensitive-looking data will be admitted with a warning instead of quarantined; requires privacy approval' });
+      else if (a !== b) ch({ kind: 'sensitive_scan_changed', classification: 'compatible', description: `${sid}: sensitive_scan.${k} ${a ?? 'quarantine'} -> ${b ?? 'quarantine'}`, action: 'stricter' });
+    }
+    if (!eq(ps.mappings, s.mappings) || !eq(ps.formats, s.formats) || ps.entity !== s.entity || ps.max_processing_seconds !== s.max_processing_seconds) {
+      ch({ kind: 'source_processing_changed', classification: 'compatible', description: `${sid}: mappings, formats or processing limits changed`, action: 'new batches use the new transform version; existing records keep the transform version that produced them' });
+    }
+  }
+  for (const sid of Object.keys(prev.sources)) {
+    if (!next.sources[sid]) ch({ kind: 'source_removed', classification: 'breaking', description: `source ${sid} removed`, action: 'batches from this source will be refused' });
+  }
 }
 
 function diffEntity(tenant: string, en: string, pe: EntityDef, e: EntityDef, next: Contract, plan: MigrationPlan) {
@@ -142,6 +173,7 @@ function diffEntity(tenant: string, en: string, pe: EntityDef, e: EntityDef, nex
   }
   for (const [id, r] of pr) if (!nr.has(id)) ch({ kind: 'rule_removed', classification: r.severity === 'error' ? 'breaking' : 'compatible', description: `rule ${id} removed`, action: 'records previously quarantined by this rule are not automatically re-admitted' });
   if (!eq(pe.relationships, e.relationships)) ch({ kind: 'relationships_changed', classification: 'breaking', description: 'referential integrity rules changed', action: 'applies to new batches' });
+  if (!eq(pe.freshness, e.freshness)) ch({ kind: 'freshness_changed', classification: 'compatible', description: `freshness limit ${pe.freshness?.max_age_hours ?? 'none'} -> ${e.freshness?.max_age_hours ?? 'none'} h`, action: 'freshness status recomputed at query time' });
 }
 
 function diffField(t: string, en: string, fn: string, pf: FieldDef, f: FieldDef, next: Contract, plan: MigrationPlan) {
@@ -184,6 +216,8 @@ function diffField(t: string, en: string, fn: string, pf: FieldDef, f: FieldDef,
     else { ch({ kind: 'made_non_nullable', classification: 'breaking', description: `${fn} became non-nullable`, action: `existing null values get new versions with "${backfill}"` }); plan.data_ops.push({ type: 'backfill', entity: en, field: fn, backfill_value: backfill }); }
   }
   if (!(pf.required ?? false) && f.required) ch({ kind: 'made_required', classification: 'breaking', description: `${fn} is now required from sources`, action: 'batches missing the column will be quarantined' });
+  if ((pf.required ?? false) && !f.required) ch({ kind: 'made_optional', classification: 'compatible', description: `${fn} is no longer required from sources`, action: 'batches may omit the column' });
+  if (pf.nullable === false && (f.nullable ?? true)) ch({ kind: 'made_nullable', classification: 'compatible', description: `${fn} may now be empty`, action: 'new records may hold null; existing records unchanged' });
   const sens = (x: FieldDef) => SENSITIVE.has(x.sensitivity ?? 'internal');
   if (sens(pf) && !sens(f)) ch({ kind: 'sensitivity_lowered', classification: 'breaking', description: `${fn}: ${pf.sensitivity} -> ${f.sensitivity ?? 'internal'}`, action: 'field becomes visible in reporting views and default extracts; requires privacy review' });
   else if (!eq(pf.sensitivity, f.sensitivity)) ch({ kind: 'sensitivity_changed', classification: 'compatible', description: `${fn}: ${pf.sensitivity ?? 'internal'} -> ${f.sensitivity ?? 'internal'}`, action: 'reporting views regenerated' });

@@ -13,7 +13,6 @@ const host = process.env.PGHOST_URL ?? 'postgres://clearline:clearline@localhost
 process.env.DATABASE_URL = process.env.TEST_DATABASE_URL ?? `${host}/${TEST_DB}`;
 process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = process.env.LOG_LEVEL ?? 'error';
-process.env.ALLOW_SELF_APPROVAL = 'false';
 
 import type { FastifyInstance } from 'fastify';
 import { buildServer } from '../../src/api/server.js';

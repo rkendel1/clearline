@@ -64,14 +64,14 @@ async function caption(title: string, body: string, ms = 4200) {
   }, [title, body]);
   await wait(ms);
 }
-async function signIn(token: string) {
+async function signIn(token: string, ready = '[data-testid=business-metrics]') {
   await page.evaluate(() => { try { sessionStorage.clear(); } catch { /* first load */ } }).catch(() => {});
   await page.goto(base + '/#/overview');
   await page.reload();
   await page.fill('#token', token);
   await wait(500);
   await page.click('button[type=submit]');
-  await page.waitForSelector('[data-testid=business-metrics]');
+  await page.waitForSelector(ready);
 }
 const scrollTo = async (sel: string) => { await page.locator(sel).first().scrollIntoViewIfNeeded(); await wait(400); };
 
@@ -105,15 +105,14 @@ await page.locator('button', { hasText: 'Download CSV' }).first().click();
 await page.waitForSelector('.note[role=status]');
 await caption('Failure 3: an unauthorized sensitive export is denied', 'A reporting user asks for unredacted fields. The backend refuses and records the attempt in the audit trail. Default extracts redact PII and PHI.', 5200);
 // 6. Failure: breaking contract change
-await signIn(DEV_TOKENS.northwind.approver);
-await page.goto(base + '/#/contracts'); await page.waitForSelector('[data-migration]');
-await caption('Failure 4: a breaking contract change', 'Version 2.0.0 adds a required field, renames a status and removes a column. It cannot apply itself: the plan lists every change, its DDL, the rows affected and how to roll back.', 5500);
+await signIn(DEV_TOKENS.northwind.approver, '[data-migration]');
+await caption('Failure 4: a breaking contract change', 'Version 2.0.0 adds a required field, renames a status and removes a column. It cannot apply itself: an approver, a role with no data access that tenant admins cannot create, reviews every change, its DDL, the rows affected and the rollback.', 5500);
 await page.mouse.wheel(0, 300); await wait(1200);
 await page.locator('button', { hasText: 'Approve and apply' }).click();
 await page.waitForSelector('.note-good');
 await page.mouse.wheel(0, -1000); await wait(400);
-await caption('Approved by a second administrator', 'Applied in one transaction. Existing records were not edited: they got new versions, and the old ones keep the meaning they had under 1.0.0.', 5200);
-await page.goto(base + '/#/overview'); await page.waitForSelector('[data-testid=business-metrics]');
+await caption('Approved by the approver', 'Applied in one transaction. Existing records were not edited: they got new versions, and the old ones keep the meaning they had under 1.0.0.', 5200);
+await signIn(DEV_TOKENS.northwind.operator);
 await caption('Every number is checked', 'The automated scenarios (A–J) check these figures against independent SQL and the generator’s own answers. Duplicate delivery, crash recovery and cross-tenant access are covered there too.', 5200);
 
 await ctx.close(); await browser.close();

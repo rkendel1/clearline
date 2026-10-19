@@ -50,7 +50,7 @@ export async function runRetention(actor: Pick<Principal, 'actor' | 'role' | 'co
 export async function eraseSubject(p: Principal, tenant: string, entity: string, key: string) {
   return withTenant(tenant, async (tx) => {
     const active = await getActiveContract(tx, tenant);
-    const e = active?.document.entities[entity];
+    const e = active && Object.hasOwn(active.document.entities, entity) ? active.document.entities[entity] : undefined;
     if (!active || !e) throw notFound(`entity ${entity}`);
     const t = table(tenant, entity);
     const versions = (await tx.query(`SELECT "_record_id", "_raw_record_id" FROM ${t} WHERE "_key" = $1`, [key])).rows;
@@ -69,10 +69,12 @@ export async function eraseSubject(p: Principal, tenant: string, entity: string,
     const qRows = (await tx.query(`SELECT raw_record_id FROM core.quarantine WHERE tenant_id = $1 AND entity = $2 AND record_key = $3`, [tenant, entity, key])).rows;
     if (qRows.length) await tx.query(`UPDATE core.raw_records SET payload = NULL, purged_at = now() WHERE id = ANY($1)`, [qRows.map((r) => r.raw_record_id)]);
     const qDel = await tx.query(`DELETE FROM core.quarantine WHERE tenant_id = $1 AND entity = $2 AND record_key = $3`, [tenant, entity, key]);
+    // Per-record findings for those source rows (messages can describe the subject's values).
+    const fDel = await tx.query(`DELETE FROM core.quality_findings WHERE tenant_id = $1 AND raw_record_id = ANY($2::bigint[])`, [tenant, [...rawIds, ...qRows.map((r) => r.raw_record_id)]]);
     await recordRemovalAdjustments(tx, tenant, entity, `"_key" = $1`, [key], 'subject_erasure');
     const del = await tx.query(`DELETE FROM ${t} WHERE "_key" = $1`, [key]);
     const keyHash = createHash('sha256').update(`${tenant}:${entity}:${key}`).digest('hex');
-    const counts = { canonical_versions_deleted: del.rowCount ?? 0, raw_payloads_purged: (rawPurged.rowCount ?? 0) + qRows.length, quarantine_deleted: qDel.rowCount ?? 0, dependents_retained: dependents };
+    const counts = { canonical_versions_deleted: del.rowCount ?? 0, raw_payloads_purged: (rawPurged.rowCount ?? 0) + qRows.length, quarantine_deleted: qDel.rowCount ?? 0, findings_deleted: fDel.rowCount ?? 0, dependents_retained: dependents };
     await tx.query(`INSERT INTO core.erasure_log (tenant_id, entity, key_sha256, requested_by, counts, affected_exports) VALUES ($1,$2,$3,$4,$5,$6)`,
       [tenant, entity, keyHash, p.actor, JSON.stringify(counts), JSON.stringify(exports)]);
     await auditTx(tx, { tenantId: tenant, actor: p.actor, role: p.role, action: 'subject.erase', resource: `${entity}:sha256:${keyHash.slice(0, 16)}`, outcome: 'succeeded', details: { counts, affected_exports: exports.length }, correlationId: p.correlationId });

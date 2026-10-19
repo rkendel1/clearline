@@ -13,6 +13,7 @@ import { audit, auditTx } from '../control/audit.js';
 import { can, type Principal } from '../control/auth.js';
 import { conditionSql, currentFrom, Params } from './sql.js';
 import { parseCanonical } from '../transform/coerce.js';
+import { failingDatasetChecks } from './reports.js';
 
 export const LINEAGE_COLUMNS = ['_record_id', '_key', '_batch_id', '_contract_version', '_trust_status'] as const;
 export const REDACTED = 'REDACTED';
@@ -80,6 +81,7 @@ export async function runExtract(p: Principal, tenant: string, extractId: string
     const c = active.document;
     const x = c.outputs.extracts.find((e) => e.id === extractId);
     if (!x) throw notFound(`extract ${extractId}`);
+    const failing = (await failingDatasetChecks(tx, tenant, c)).get(x.entity) ?? [];
     const e = c.entities[x.entity];
     const pr = new Params();
     const from = currentFrom(tenant, x.entity, req.include_untrusted ? 'all' : 'trusted', params.as_of, pr, 'JOIN core.contract_versions cv ON cv.id = r."_contract_version_id"');
@@ -101,6 +103,7 @@ export async function runExtract(p: Principal, tenant: string, extractId: string
     await auditTx(tx, { tenantId: tenant, actor: p.actor, role: p.role, action: 'extract.run', resource: `extract:${x.id}`, outcome: 'succeeded',
       details: { export_id: exportId, rows: rows.length, sha256: sha, params, sensitive_fields: [...sensitive], sensitive_included: !!req.include_sensitive }, correlationId: p.correlationId });
     return { csv, meta: { export_id: exportId, extract_id: x.id, contract_version: active.version, as_of: params.as_of, filters: stableStringify(filters),
-      row_count: rows.length, sha256: sha, redacted_fields: req.include_sensitive ? [] : [...sensitive], trust_scope: req.include_untrusted ? 'all' : 'trusted' } };
+      row_count: rows.length, sha256: sha, redacted_fields: req.include_sensitive ? [] : [...sensitive], trust_scope: req.include_untrusted ? 'all' : 'trusted',
+      dataset_checks_failing: failing.map((f) => f.check_id) } };
   });
 }

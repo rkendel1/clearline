@@ -13,7 +13,7 @@ export function Overview({ tenant, onOpenBatch }: { tenant: string; onOpenBatch:
       <div className="page-head">
         <div>
           <h1>Is {tenant}’s data trustworthy right now?</h1>
-          {o && <Verdict totals={o.totals} freshness={o.freshness} recon={o.reconciliation} />}
+          {o && <Verdict verdict={o.verdict} />}
         </div>
         <button className="btn" onClick={reload} disabled={ops.loading || biz.loading}>{ops.loading || biz.loading ? 'Refreshing…' : 'Refresh'}</button>
       </div>
@@ -52,15 +52,15 @@ export function Overview({ tenant, onOpenBatch }: { tenant: string; onOpenBatch:
       )}
 
       {b && (
-        <Section id="business" title="Business summary" description={<>Declared by contract {b.contract_version}. Values count only trusted batches; the figure beneath shows what untrusted batches would add.</>}>
+        <Section id="business" title="Business summary" description={<>Declared by contract {b.contract_version}. Values use the latest version of each record that came from a trusted batch; where untrusted data was held back, the tile says how much it would change the figure.</>}>
           <div className="metrics" data-testid="business-metrics">
             {b.metrics.map((m: any) => (
-              <article key={m.id} className={`metric ${m.trusted ? '' : 'metric-partial'}`} data-metric={m.id} data-value={m.value} title={m.description}>
+              <article key={m.id} className={`metric ${m.trusted ? '' : 'metric-partial'}`} data-trusted={String(m.trusted)} data-metric={m.id} data-value={m.value} title={m.description}>
                 <h3>{m.title}</h3>
                 <p className="metric-value">{formatValue(m.value, m.unit)}</p>
-                {m.trusted
-                  ? <p className="metric-foot"><Signal tone="good" label="Covers all received data" /></p>
-                  : <p className="metric-foot"><Signal tone="warn" label={`${formatValue(m.untrusted_records_excluded)} untrusted records held back`} /><span className="muted"> {formatValue(m.value_including_untrusted, m.unit)} if included</span></p>}
+                {m.trusted && <p className="metric-foot"><Signal tone="good" label="Covers all received data" /></p>}
+                {m.untrusted_records_excluded > 0 && <p className="metric-foot"><Signal tone="warn" label={`${formatValue(m.untrusted_records_excluded)} untrusted records held back`} /><span className="muted"> {formatValue(m.value_including_untrusted, m.unit)} if included</span></p>}
+                {m.dataset_checks_failing?.length > 0 && <p className="metric-foot" data-qualified="true"><Signal tone="warn" label="Dataset check failing" /><span className="muted"> {m.dataset_checks_failing.map((q: { explanation: string }) => q.explanation).join(' ')}</span></p>}
               </article>
             ))}
             <article className="metric" data-metric="exception_rate" data-value={b.exception_rate.rate}>
@@ -96,18 +96,11 @@ export function Overview({ tenant, onOpenBatch }: { tenant: string; onOpenBatch:
   );
 }
 
-function Verdict({ totals, freshness, recon }: { totals: any; freshness: any[]; recon: any }) {
-  const stale = freshness.filter((f) => f.status === 'stale').length;
-  const datasetFailed = recon.latest_dataset_run.filter((r: any) => r.status === 'failed').length;
-  const problems = [
-    totals.untrusted ? `${totals.untrusted} batch${totals.untrusted > 1 ? 'es are' : ' is'} not trusted` : null,
-    totals.failed ? `${totals.failed} failed` : null,
-    stale ? `${stale} source${stale > 1 ? 's are' : ' is'} stale` : null,
-    datasetFailed ? `${datasetFailed} dataset check${datasetFailed > 1 ? 's' : ''} failing` : null,
-  ].filter(Boolean);
-  return problems.length
-    ? <p className="verdict verdict-bad" data-testid="verdict"><Signal tone="bad" label="Needs review" /> {problems.join('; ')}. Trusted figures below exclude the affected data.</p>
-    : <p className="verdict verdict-good" data-testid="verdict"><Signal tone="good" label="Yes" /> Every batch in the window ran, reconciled and is trusted.</p>;
+// Rendered verbatim from the API's verdict: the dashboard does not decide trust itself.
+function Verdict({ verdict }: { verdict: { status: string; summary: string } }) {
+  const tone = verdict.status === 'trusted' ? 'good' : verdict.status === 'in_progress' ? 'idle' : 'bad';
+  const label = verdict.status === 'trusted' ? 'Yes' : verdict.status === 'in_progress' ? 'Processing' : 'Needs review';
+  return <p className={`verdict verdict-${tone}`} data-testid="verdict" data-status={verdict.status}><Signal tone={tone} label={label} /> {verdict.summary}</p>;
 }
 
 function Tally({ label, value, field, tone }: { label: string; value: number; field: string; tone?: 'good' | 'bad' }) {

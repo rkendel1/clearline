@@ -76,7 +76,7 @@ export async function submitBatch(p: Principal, s: Submission): Promise<SubmitRe
   return withTenant(s.tenantId, async (tx) => {
     const active = await getActiveContract(tx, s.tenantId);
     if (!active) throw unprocessable('no_active_contract', `Tenant ${s.tenantId} has no active contract`);
-    const source = active.document.sources[s.sourceId];
+    const source = Object.hasOwn(active.document.sources, s.sourceId) ? active.document.sources[s.sourceId] : undefined;
     if (!source) throw badRequest('unknown_source', `Source "${s.sourceId}" is not declared in contract ${active.version}`);
     if (!source.formats.includes(s.format)) throw badRequest('unsupported_format', `Source "${s.sourceId}" accepts ${source.formats.join(', ')}`);
     const control = parseControl(s.control, source.control_totals?.sum_fields ?? []);

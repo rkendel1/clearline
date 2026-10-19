@@ -44,13 +44,13 @@ To speed up recovery, restart a worker; to make it more conservative, raise `WOR
 
 | Reason | Action |
 |---|---|
-| `reconciliation failed: source_control_count` / `source_control_sum:*` | The sender's totals disagree with what arrived; the explanation states the exact row/amount difference. Ask the source for a corrected, complete file and submit it. Exact duplicates in it have no effect, and corrections supersede by the contract's ordering. |
+| `reconciliation failed: source_control_count` / `source_control_sum:*` | The sender's totals disagree with what arrived; the explanation states the exact row/amount difference. Ask the source for the corrected, **complete** file and submit it. Rows already held only by the untrusted batch are re-established by the new trusted batch, not ignored as duplicates. *(Tested: Scenario I.)* The original batch stays untrusted as a record of what happened. |
 | `reject rate X% exceeds threshold` | Too many rows quarantined. Read Exceptions → Quarantined records (each has its rule, field and source row); fix at source and resubmit corrected rows. |
 | `post-load drift detected` | Rows in the target no longer match what the batch loaded: something changed data outside the platform. See *Drift* below. |
 
 ## Drift detected (rows changed outside the platform)
 
-**Notice:** `batch.drift_detected` audit event; failed `reverify:*` checks in the batch's reconciliation; the batch flips to untrusted. Triggered by `POST /api/v1/tenants/:tenant/reconciliation/run` (schedule it, e.g. hourly).
+**Notice:** `batch.drift_detected` audit event; failed `reverify:*` checks in the batch's reconciliation; the batch flips to untrusted. Re-verification compares, per batch, row counts and control-total fields, including migration-created versions (`reverify:migration_*`). Edits to other fields of a row are not detected. Triggered by `POST /api/v1/tenants/:tenant/reconciliation/run` (schedule it, e.g. hourly).
 
 1. Treat it as a security/integrity incident. The re-verification explanation gives the row and amount difference. The audit trail shows every platform-made change; the change you are looking at was **not** made through the platform.
 2. Restore the affected rows from backup (below) into a scratch database and copy them back, or restore the database to a point in time. Resubmitting the original file will **not** repair it: identical bytes are an exact duplicate with no effect.
@@ -64,9 +64,13 @@ Exceptions → Quarantined records lists each row with its source row number and
 
 Records referencing a record that has not arrived, e.g. claims for members not yet in the eligibility feed. Usually late reference data: the check clears once the referenced records arrive (*tested: Scenario I*). If it persists, ask the source for the missing reference records.
 
+## Batch failed with `ContractSupersededError`
+
+The batch was queued when a breaking contract migration was applied, so it was not processed under the superseded contract. It has no effects. Check that the source's file still matches the new contract, then replay it: replay re-pins it to the active contract.
+
 ## Contract migration awaiting approval or failed
 
-A breaking contract stays `pending_approval` and blocks further publishes (409). Review the plan (Contracts page or `GET …/migrations`). A **different** admin approves with the target version typed in, or rejects it. If an approved migration fails, the transaction rolls back, the migration is `failed`, the version `rejected`, and the previous version stays active. Rollback (`POST …/migrations/:id/rollback`) is allowed only before any batch uses the new version; after that, publish a corrected new version.
+A breaking contract stays `pending_approval` and blocks further publishes (409). Review the plan (Contracts page or `GET …/migrations`). An **approver** (token issued by the platform administrator) approves with the target version typed in, or rejects it. If an approved migration fails, the transaction rolls back, the migration is `failed`, the version `rejected`, and the previous version stays active. Rollback (`POST …/migrations/:id/rollback`) is allowed only before any batch uses the new version; after that, publish a corrected new version.
 
 ## Database unavailable
 

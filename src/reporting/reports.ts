@@ -2,14 +2,39 @@
 // Every number here comes from a query documented in docs/metrics.md; the
 // dashboard renders these API results and computes nothing itself.
 
-import { withTenant } from '../platform/db.js';
+import { withTenant, type Tx } from '../platform/db.js';
+import type { Contract } from '../contracts/types.js';
 import { notFound } from '../platform/errors.js';
 import { getActiveContract } from '../contracts/registry.js';
 import { SENSITIVE } from '../contracts/types.js';
 import { table } from '../contracts/compile.js';
-import { metricSql } from './sql.js';
+import { metricSql, orphanWhere } from './sql.js';
+import { ident } from '../platform/db.js';
 
 export interface Window { from: string; to: string }
+
+/**
+ * Failing checks of the latest dataset reconciliation run, mapped to the entities they involve.
+ * A failing dataset check qualifies every trusted figure over those entities (spec §6: a failed
+ * reconciliation must not publish an unqualified result as trusted).
+ */
+export interface FailingCheck { check_id: string; explanation: string }
+export async function failingDatasetChecks(tx: Tx, tenant: string, c: Contract): Promise<Map<string, FailingCheck[]>> {
+  const { rows } = await tx.query(`SELECT check_id, explanation FROM core.reconciliation_results WHERE tenant_id = $1 AND scope = 'dataset' AND status = 'failed'
+      AND run_id = (SELECT run_id FROM core.reconciliation_results WHERE tenant_id = $1 AND scope = 'dataset' ORDER BY created_at DESC, id DESC LIMIT 1)`, [tenant]);
+  const byEntity = new Map<string, FailingCheck[]>();
+  const add = (en: string, explanation: string) => byEntity.set(en, [...(byEntity.get(en) ?? []), { check_id: current, explanation }]);
+  let current = '';
+  for (const r of rows) {
+    const id = String(r.check_id);
+    current = id;
+    const orphan = /^dataset:orphans:([^.]+)\./.exec(id);
+    if (orphan) { add(orphan[1], r.explanation); continue; }
+    const d = (c.dataset_checks ?? []).find((x) => `dataset:${x.id}` === id);
+    if (d) for (const en of new Set([d.left.entity, 'entity' in d.right ? d.right.entity : d.left.entity])) add(en, r.explanation);
+  }
+  return byEntity;
+}
 
 export function defaultWindow(q: { from?: string; to?: string }): Window {
   const to = q.to ? new Date(q.to) : new Date();
@@ -68,7 +93,22 @@ export async function operationsReport(tenant: string, w: Window) {
       `SELECT check_id, status, explanation, created_at FROM core.reconciliation_results
         WHERE tenant_id = $1 AND scope = 'dataset' AND run_id = (SELECT run_id FROM core.reconciliation_results WHERE tenant_id = $1 AND scope = 'dataset' ORDER BY created_at DESC, id DESC LIMIT 1)
         ORDER BY check_id`, [tenant])).rows;
-    return { tenant, window: w, contract_version: active?.version ?? null, totals, daily, quality_by_category: qualityByCategory, queue, freshness,
+    // The verdict is computed here, not in the dashboard, so every consumer gets the same answer.
+    const stale = (freshness as { status: string }[]).filter((f) => f.status === 'stale').length;
+    const datasetFailing = latestDataset.filter((r) => r.status === 'failed').length;
+    const problems = [
+      totals.untrusted ? `${totals.untrusted} batch${totals.untrusted > 1 ? 'es are' : ' is'} not trusted` : null,
+      totals.failed ? `${totals.failed} batch${totals.failed > 1 ? 'es' : ''} failed` : null,
+      stale ? `${stale} source${stale > 1 ? 's are' : ' is'} stale` : null,
+      datasetFailing ? `${datasetFailing} dataset check${datasetFailing > 1 ? 's are' : ' is'} failing` : null,
+    ].filter((x): x is string => !!x);
+    const inFlight = queue.queued + queue.processing;
+    const verdict = problems.length
+      ? { status: 'needs_review', summary: `${problems.join('; ')}. Trusted figures exclude untrusted batches and are qualified where dataset checks fail.`, problems }
+      : inFlight
+        ? { status: 'in_progress', summary: `${inFlight} batch${inFlight > 1 ? 'es are' : ' is'} still queued or processing; figures will change when they commit.`, problems }
+        : { status: 'trusted', summary: 'Every batch in the window ran, reconciled and is trusted, and every dataset check passes.', problems };
+    return { tenant, window: w, contract_version: active?.version ?? null, verdict, totals, daily, quality_by_category: qualityByCategory, queue, freshness,
       reconciliation: { batches_failed: recentBatches.filter((b) => b.reconciliation_status === 'failed').length, latest_dataset_run: latestDataset },
       recent_batches: recentBatches };
   });
@@ -79,6 +119,7 @@ export async function businessSummary(tenant: string) {
     const active = await getActiveContract(tx, tenant);
     if (!active) throw notFound('no active contract');
     const c = active.document;
+    const failing = await failingDatasetChecks(tx, tenant, c);
     const metrics = [];
     for (const m of c.outputs.metrics) {
       const e = c.entities[m.entity];
@@ -87,8 +128,10 @@ export async function businessSummary(tenant: string) {
       const tv = (await tx.query(trusted.sql, trusted.params)).rows[0].value;
       const av = (await tx.query(all.sql, all.params)).rows[0].value;
       const excluded = (await tx.query(`SELECT count(*)::int AS n FROM ${table(tenant, m.entity)} r JOIN core.batches b ON b.id = r."_batch_id" WHERE r."_is_current" AND b.trust_status <> 'trusted'`)).rows[0].n;
+      const qualifications = failing.get(m.entity) ?? [];
       metrics.push({ id: m.id, title: m.title, description: m.description, unit: m.unit ?? 'count', entity: m.entity, aggregation: m.aggregation, field: m.field ?? null,
-        filter: m.filter ?? null, value: tv, value_including_untrusted: av, untrusted_records_excluded: excluded, trusted: tv === av && excluded === 0 });
+        filter: m.filter ?? null, value: tv, value_including_untrusted: av, untrusted_records_excluded: excluded, dataset_checks_failing: qualifications,
+        trusted: tv === av && excluded === 0 && qualifications.length === 0 });
     }
     const ex = (await tx.query(`SELECT coalesce(sum(received_count),0)::int AS received, coalesce(sum(quarantined_count),0)::int AS quarantined
         FROM core.batches WHERE tenant_id = $1 AND status IN ('completed','completed_with_exceptions')`, [tenant])).rows[0];
@@ -99,7 +142,7 @@ export async function businessSummary(tenant: string) {
   });
 }
 
-export async function exceptionReport(tenant: string, opts: { status?: 'open' | 'resolved' | 'all'; limit?: number; canSeeSensitive: boolean }) {
+export async function exceptionReport(tenant: string, opts: { status?: 'open' | 'resolved' | 'all'; limit?: number; batchId?: string; canSeeSensitive: boolean }) {
   return withTenant(tenant, async (tx) => {
     const active = await getActiveContract(tx, tenant);
     if (!active) throw notFound('no active contract');
@@ -110,8 +153,8 @@ export async function exceptionReport(tenant: string, opts: { status?: 'open' | 
     const q = (await tx.query(
       `SELECT q.id, q.batch_id, b.source_id, q.entity, q.record_key, q.category, q.status, r.row_number AS source_row, q.errors, q.created_at, q.resolution
          FROM core.quarantine q JOIN core.batches b ON b.id = q.batch_id JOIN core.raw_records r ON r.id = q.raw_record_id
-        WHERE q.tenant_id = $1 ${status === 'all' ? '' : 'AND q.status = $3'} ORDER BY q.created_at DESC, q.id LIMIT $2`,
-      status === 'all' ? [tenant, limit] : [tenant, limit, status])).rows.map((r) => ({
+        WHERE q.tenant_id = $1 AND ($3::text IS NULL OR q.status = $3) AND ($4::uuid IS NULL OR q.batch_id = $4) ORDER BY q.created_at DESC, q.id LIMIT $2`,
+      [tenant, limit, status === 'all' ? null : status, opts.batchId ?? null])).rows.map((r) => ({
         ...r, record_key: r.record_key && keySensitive(r.entity) && !opts.canSeeSensitive ? '[redacted]' : r.record_key,
         reasons: (r.errors as { message: string; rule_id: string }[]).map((e) => ({ rule_id: e.rule_id, message: e.message })), errors: undefined,
       }));
@@ -123,9 +166,8 @@ export async function exceptionReport(tenant: string, opts: { status?: 'open' | 
           FROM ${table(tenant, en)} r WHERE r."_is_late" ORDER BY r."_record_id" DESC LIMIT 200`)).rows;
       late.push(...rows.map((r) => ({ entity: en, ...r, key: keySensitive(en) && !opts.canSeeSensitive ? '[redacted]' : r.key })));
       for (const rel of e.relationships ?? []) {
-        const o = (await tx.query(`SELECT r."_record_id" AS record_id, r."_key" AS key, r."${rel.field}"::text AS missing_reference, r."_batch_id" AS batch_id
-            FROM ${table(tenant, en)} r WHERE r."_is_current" AND r."${rel.field}" IS NOT NULL
-             AND NOT EXISTS (SELECT 1 FROM ${table(tenant, rel.references.entity)} t WHERE t."_key" = r."${rel.field}"::text) ORDER BY r."_record_id" LIMIT 200`)).rows;
+        const o = (await tx.query(`SELECT r."_record_id" AS record_id, r."_key" AS key, r.${ident(rel.field)}::text AS missing_reference, r."_batch_id" AS batch_id
+            ${orphanWhere(tenant, en, rel)} ORDER BY r."_record_id" LIMIT 200`)).rows;
         orphans.push(...o.map((r) => ({ entity: en, relationship: rel.id, references: rel.references.entity, ...r,
           key: keySensitive(en) && !opts.canSeeSensitive ? '[redacted]' : r.key,
           missing_reference: SENSITIVE.has(e.fields[rel.field].sensitivity ?? 'internal') && !opts.canSeeSensitive ? '[redacted]' : r.missing_reference })));

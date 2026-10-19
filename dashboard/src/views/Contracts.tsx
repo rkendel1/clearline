@@ -7,7 +7,7 @@ export function Contracts({ tenant, me }: { tenant: string; me: Me }) {
   const versions = useApi<any[]>(`/api/v1/tenants/${tenant}/contracts`);
   const migrations = useApi<any[]>(`/api/v1/tenants/${tenant}/migrations`);
   const [msg, setMsg] = useState<{ tone: 'good' | 'bad'; text: string } | null>(null);
-  const isAdmin = me.role === 'admin';
+  const canDecide = me.role === 'approver';
 
   const act = async (id: number, action: 'approve' | 'reject', toVersion: string) => {
     try {
@@ -28,7 +28,7 @@ export function Contracts({ tenant, me }: { tenant: string; me: Me }) {
 
   return (
     <>
-      <div className="page-head"><div><h1>Contracts</h1><p className="lede">Versioned definitions of what {tenant}’s data means. Breaking changes wait for a second administrator’s approval; records keep the contract version that produced them.</p></div></div>
+      <div className="page-head"><div><h1>Contracts</h1><p className="lede">Versioned definitions of what {tenant}’s data means. Breaking changes wait for an approver, a role with no data access that tenant admins cannot create; records keep the contract version that produced them.</p></div></div>
       {msg && <p className={`note note-${msg.tone}`} role="status">{msg.text}</p>}
       <ErrorNote error={versions.error ?? migrations.error} />
       {versions.data && (
@@ -39,20 +39,21 @@ export function Contracts({ tenant, me }: { tenant: string; me: Me }) {
         </Section>
       )}
       {migrations.data && (
-        <Section id="migrations" title="Migration plans" description="Each plan lists every change with its classification, the exact DDL, data operations, impact and rollback path.">
+        <Section id="migrations" title="Migration plans" description="Each plan lists the changes with their classification, the table DDL, the views that will be regenerated, data operations, the distinct rows affected and the rollback path.">
           {migrations.data.length === 0 ? <Empty>No migrations.</Empty> : migrations.data.map((m) => (
             <article key={m.id} className="plan" data-migration={m.id}>
               <header>
                 <h3>Migration {m.id}: {m.from_version ?? 'none'} to {m.to_version}</h3>
                 <p>{m.status === 'planned' ? <Signal tone="warn" label="Awaiting approval" /> : m.status === 'applied' ? <Signal tone="good" label="Applied" /> : <Signal tone={m.status === 'failed' ? 'bad' : 'idle'} label={m.status.replace('_', ' ')} />}
                   <span className="muted"> {m.classification.replace('_', ' ')}; requested by {m.requested_by} {when(m.requested_at)}{m.approved_by ? `; approved by ${m.approved_by}` : ''}{m.error ? `; ${m.error}` : ''}</span></p>
-                {m.status === 'planned' && isAdmin && <div className="actions"><button className="btn" onClick={() => act(m.id, 'approve', m.to_version)}>Approve and apply</button><button className="btn btn-quiet" onClick={() => act(m.id, 'reject', m.to_version)}>Reject</button></div>}
+                {m.status === 'planned' && canDecide && <div className="actions"><button className="btn" onClick={() => act(m.id, 'approve', m.to_version)}>Approve and apply</button><button className="btn btn-quiet" onClick={() => act(m.id, 'reject', m.to_version)}>Reject</button></div>}
               </header>
               <table className="grid"><thead><tr><th>Change</th><th>Classification</th><th>What happens</th></tr></thead>
                 <tbody>{m.plan.changes.map((c: any, i: number) => <tr key={i} className={c.classification === 'breaking' ? 'row-warn' : ''}><td>{c.entity ? `${c.entity}${c.field ? '.' + c.field : ''}: ` : ''}{c.description}</td><td>{c.classification}</td><td className="prose">{c.action}</td></tr>)}</tbody></table>
               {m.plan.impact && <p className="muted">Impact: {Object.entries(m.plan.impact).map(([en, x]: any) => `${en} ${x.current_rows} current rows${x.affected_rows !== undefined ? `, ${x.affected_rows} get new versions` : ''}`).join('; ')}</p>}
               <details><summary>DDL ({m.plan.ddl.length}) and data operations ({m.plan.data_ops.length})</summary>
                 <pre className="code">{[...m.plan.ddl, ...m.plan.data_ops.map((d: any) => `-- ${d.type} ${d.entity}.${d.field}: ${d.backfill_value ?? JSON.stringify(d.value_map)}`)].join(';\n\n')}</pre></details>
+              {m.plan.view_ddl?.length > 0 && <details><summary>Regenerated views ({m.plan.view_ddl.filter((v: string) => v.startsWith('CREATE VIEW')).length})</summary><pre className="code">{m.plan.view_ddl.join(';\n\n')}</pre></details>}
               <details><summary>Rollback</summary><ul>{m.plan.rollback.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul></details>
               {m.plan.rejected_reasons?.length > 0 && <ul className="note note-bad">{m.plan.rejected_reasons.map((r: string, i: number) => <li key={i}>{r}</li>)}</ul>}
             </article>

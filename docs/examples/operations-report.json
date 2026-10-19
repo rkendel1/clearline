@@ -1,10 +1,17 @@
 {
   "tenant": "northwind",
   "window": {
-    "from": "2026-09-19T21:50:40.692Z",
-    "to": "2026-10-19T21:50:40.692Z"
+    "from": "2026-09-19T22:29:02.831Z",
+    "to": "2026-10-19T22:29:02.831Z"
   },
   "contract_version": "1.0.0",
+  "verdict": {
+    "status": "needs_review",
+    "summary": "1 batch is not trusted. Trusted figures exclude untrusted batches and are qualified where dataset checks fail.",
+    "problems": [
+      "1 batch is not trusted"
+    ]
+  },
   "totals": {
     "batches": 6,
     "succeeded": 6,
@@ -18,8 +25,8 @@
     "rows_quarantined": 3,
     "rows_duplicate": 0,
     "duplicate_submissions": 1,
-    "latency_p50_s": 0.30399600000000004,
-    "latency_p95_s": 0.3818635
+    "latency_p50_s": 0.279533,
+    "latency_p95_s": 0.38840425
   },
   "daily": [
     {
@@ -52,9 +59,9 @@
     {
       "source_id": "nw_plans_csv",
       "entity": "plan",
-      "last_arrival": "2026-10-19T21:50:39.942Z",
-      "last_success": "2026-10-19T21:50:40.160Z",
-      "last_trusted": "2026-10-19T21:50:40.160Z",
+      "last_arrival": "2026-10-19T22:29:02.035Z",
+      "last_success": "2026-10-19T22:29:02.259Z",
+      "last_trusted": "2026-10-19T22:29:02.259Z",
       "age_hours": 0,
       "max_age_hours": 720,
       "status": "fresh"
@@ -62,9 +69,9 @@
     {
       "source_id": "nw_pharmacy_api",
       "entity": "pharmacy_fill",
-      "last_arrival": "2026-10-19T21:50:40.074Z",
-      "last_success": "2026-10-19T21:50:40.462Z",
-      "last_trusted": "2026-10-19T21:50:40.462Z",
+      "last_arrival": "2026-10-19T22:29:02.184Z",
+      "last_success": "2026-10-19T22:29:02.581Z",
+      "last_trusted": "2026-10-19T22:29:02.581Z",
       "age_hours": 0,
       "max_age_hours": 26,
       "status": "fresh"
@@ -72,9 +79,9 @@
     {
       "source_id": "nw_eligibility_csv",
       "entity": "member",
-      "last_arrival": "2026-10-19T21:50:39.968Z",
-      "last_success": "2026-10-19T21:50:40.205Z",
-      "last_trusted": "2026-10-19T21:50:40.205Z",
+      "last_arrival": "2026-10-19T22:29:02.066Z",
+      "last_success": "2026-10-19T22:29:02.294Z",
+      "last_trusted": "2026-10-19T22:29:02.294Z",
       "age_hours": 0,
       "max_age_hours": 26,
       "status": "fresh"
@@ -82,9 +89,9 @@
     {
       "source_id": "nw_medical_claims_csv",
       "entity": "claim",
-      "last_arrival": "2026-10-19T21:50:40.061Z",
-      "last_success": "2026-10-19T21:50:40.423Z",
-      "last_trusted": "2026-10-19T21:50:40.389Z",
+      "last_arrival": "2026-10-19T22:29:02.172Z",
+      "last_success": "2026-10-19T22:29:02.534Z",
+      "last_trusted": "2026-10-19T22:29:02.483Z",
       "age_hours": 0,
       "max_age_hours": 26,
       "status": "fresh"
@@ -97,37 +104,37 @@
         "check_id": "dataset:orphans:claim.claim_member",
         "status": "passed",
         "explanation": "Every current claim references an existing member.",
-        "created_at": "2026-10-19T21:50:40.497Z"
+        "created_at": "2026-10-19T22:29:02.614Z"
       },
       {
         "check_id": "dataset:orphans:member.member_plan",
         "status": "passed",
         "explanation": "Every current member references an existing plan.",
-        "created_at": "2026-10-19T21:50:40.497Z"
+        "created_at": "2026-10-19T22:29:02.614Z"
       },
       {
         "check_id": "dataset:orphans:pharmacy_fill.fill_member",
         "status": "passed",
         "explanation": "Every current pharmacy_fill references an existing member.",
-        "created_at": "2026-10-19T21:50:40.497Z"
+        "created_at": "2026-10-19T22:29:02.614Z"
       },
       {
         "check_id": "dataset:paid_within_billed",
         "status": "passed",
         "explanation": "Total paid across trusted current claims must not exceed total billed: holds (189670.45 lte 489755.37).",
-        "created_at": "2026-10-19T21:50:40.497Z"
+        "created_at": "2026-10-19T22:29:02.614Z"
       },
       {
         "check_id": "dataset:rx_paid_nonnegative",
         "status": "passed",
         "explanation": "Pharmacy plan-paid total for filled scripts is non-negative: holds (31177.27 gte 0).",
-        "created_at": "2026-10-19T21:50:40.497Z"
+        "created_at": "2026-10-19T22:29:02.614Z"
       }
     ]
   },
   "recent_batches": [
     {
-      "id": "869eccec-406a-491a-904a-777d74c8f8d8",
+      "id": "cdb4ec79-e34d-4135-b9d2-d6877be3b3d1",
       "source_id": "nw_pharmacy_api",
       "entity": "pharmacy_fill",
       "status": "completed",
@@ -144,12 +151,12 @@
       "conflict_count": 0,
       "attempt_count": 1,
       "is_late": false,
-      "arrival_at": "2026-10-19T21:50:40.074Z",
-      "completed_at": "2026-10-19T21:50:40.462Z",
-      "latency_s": "0.388581"
+      "arrival_at": "2026-10-19T22:29:02.184Z",
+      "completed_at": "2026-10-19T22:29:02.581Z",
+      "latency_s": "0.397191"
     },
     {
-      "id": "0b1ce32f-3856-46d3-bc26-ed7fa00c4e30",
+      "id": "a9440625-757c-403f-8832-6c30735046ff",
       "source_id": "nw_medical_claims_csv",
       "entity": "claim",
       "status": "completed",
@@ -168,12 +175,12 @@
       "conflict_count": 0,
       "attempt_count": 1,
       "is_late": false,
-      "arrival_at": "2026-10-19T21:50:40.061Z",
-      "completed_at": "2026-10-19T21:50:40.423Z",
-      "latency_s": "0.361711"
+      "arrival_at": "2026-10-19T22:29:02.172Z",
+      "completed_at": "2026-10-19T22:29:02.534Z",
+      "latency_s": "0.362044"
     },
     {
-      "id": "503e2c14-0fe2-47b5-9e56-6d46dc07cdbf",
+      "id": "a0e93158-a891-4980-8a68-eccad1223df6",
       "source_id": "nw_medical_claims_csv",
       "entity": "claim",
       "status": "completed",
@@ -190,9 +197,9 @@
       "conflict_count": 0,
       "attempt_count": 1,
       "is_late": false,
-      "arrival_at": "2026-10-19T21:50:40.045Z",
-      "completed_at": "2026-10-19T21:50:40.389Z",
-      "latency_s": "0.343880"
+      "arrival_at": "2026-10-19T22:29:02.157Z",
+      "completed_at": "2026-10-19T22:29:02.483Z",
+      "latency_s": "0.325441"
     }
   ]
 }

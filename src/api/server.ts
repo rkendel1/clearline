@@ -3,7 +3,7 @@
 
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
 import fastifyStatic from '@fastify/static';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { loadConfig } from '../platform/config.js';
@@ -52,7 +52,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     const tenant = (req.params as Record<string, string>)?.tenant;
     if (req.method === 'GET' && tenant && req.principal && rep.statusCode < 400) {
       await audit({ tenantId: tenant, actor: req.principal.actor, role: req.principal.role, action: 'access.read', resource: route, outcome: 'allowed',
-        details: { params: req.params, query_keys: Object.keys((req.query as object) ?? {}) }, correlationId: req.correlationId }).catch(() => {});
+        details: { params: auditParams(req.params as Record<string, string>), query_keys: Object.keys((req.query as object) ?? {}) }, correlationId: req.correlationId }).catch(() => {});
     }
   });
 
@@ -146,4 +146,11 @@ async function dbGauges(): Promise<string[]> {
     lines.push(`# database gauges unavailable: ${(err as Error).message.replace(/\n/g, ' ')}`);
   }
   return lines;
+}
+
+/** Subject keys in paths (e.g. /lineage/member/:key) are hashed: the audit trail is append-only and must not retain identifiers erasure removes. */
+function auditParams(p: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(p ?? {})) out[k] = k === 'key' ? `sha256:${createHash('sha256').update(`${p.tenant}:${p.entity}:${v}`).digest('hex').slice(0, 16)}` : v;
+  return out;
 }

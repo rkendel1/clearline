@@ -40,6 +40,9 @@ test('Scenario A: valid batch flows from source row to metric and extract', asyn
   assert.match(batch.transform_version, /^engine@1\.0\.0\+contract@1\.0\.0#[0-9a-f]{12}$/);
   assert.equal(batch.source_reported_at, '2026-10-01T06:00:00.000Z');
   assert.ok(batch.started_at && batch.completed_at);
+  assert.ok(Date.parse(batch.arrival_at) <= Date.parse(batch.started_at) && Date.parse(batch.started_at) <= Date.parse(batch.completed_at), 'arrival <= start <= completion');
+  assert.equal(batch.attempt_count, 1);
+  assert.equal(batch.processing_run_id, `${sub.body.batch_id}#1`);
   assert.ok(batch.reconciliation.length >= 7 && batch.reconciliation.every((r: { status: string }) => r.status === 'passed'));
   assert.ok(batch.quality_results.every((q: { failed_count: number; severity: string }) => q.failed_count === 0));
 

@@ -5,7 +5,7 @@ import { withTenant, type Tx } from '../platform/db.js';
 import { getActiveContract } from '../contracts/registry.js';
 import { table } from '../contracts/compile.js';
 import type { Contract, DatasetCheckDef } from '../contracts/types.js';
-import { aggregateSql, conditionSql, currentFrom, Params } from '../reporting/sql.js';
+import { aggregateSql, conditionSql, currentFrom, orphanWhere, Params } from '../reporting/sql.js';
 import { compareCanonical, subDecimal } from '../transform/coerce.js';
 import type { ReconResult } from './batch.js';
 import { reverifyBatches } from './reverify.js';
@@ -35,9 +35,7 @@ export async function evaluateDatasetChecks(tx: Tx, tenant: string, c: Contract)
   }
   for (const [en, e] of Object.entries(c.entities)) {
     for (const rel of e.relationships ?? []) {
-      const { rows } = await tx.query(
-        `SELECT count(*)::int AS n FROM ${table(tenant, en)} r WHERE r."_is_current" AND r."${rel.field}" IS NOT NULL
-           AND NOT EXISTS (SELECT 1 FROM ${table(tenant, rel.references.entity)} t WHERE t."_key" = r."${rel.field}"::text)`);
+      const { rows } = await tx.query(`SELECT count(*)::int AS n ${orphanWhere(tenant, en, rel)}`);
       const n = rows[0].n;
       out.push({ check_id: `dataset:orphans:${en}.${rel.id}`, status: n === 0 ? 'passed' : 'failed', expected: { orphans: 0 }, actual: { orphans: n }, difference: { rows: n },
         explanation: n === 0 ? `Every current ${en} references an existing ${rel.references.entity}.` : `${n} current ${en} record(s) reference a ${rel.references.entity} that has not been received (late or missing reference data); see the exception report.` });

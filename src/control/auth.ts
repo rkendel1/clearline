@@ -7,7 +7,7 @@ import { AppError, unauthorized } from '../platform/errors.js';
 import { metrics } from '../platform/metrics.js';
 import { audit } from './audit.js';
 
-export type Role = 'platform_admin' | 'admin' | 'operator' | 'reporter';
+export type Role = 'platform_admin' | 'admin' | 'approver' | 'operator' | 'reporter';
 
 export type Permission =
   | 'tenant:create' | 'token:issue'
@@ -20,9 +20,12 @@ export type Permission =
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   platform_admin: new Set(['tenant:create', 'token:issue']),
-  admin: new Set(['token:issue', 'contract:read', 'contract:publish', 'contract:approve', 'batch:submit', 'batch:read', 'batch:replay',
+  admin: new Set(['token:issue', 'contract:read', 'contract:publish', 'batch:submit', 'batch:read', 'batch:replay',
     'quarantine:read', 'quarantine:resolve', 'record:read', 'record:read_sensitive', 'lineage:read', 'report:read', 'extract:run',
     'extract:sensitive', 'audit:read', 'retention:run', 'subject:erase']),
+  // Separation of duties: approvers only decide on contract migrations and see no tenant data.
+  // Their tokens are issued by the platform administrator, never by tenant admins.
+  approver: new Set(['contract:read', 'contract:approve']),
   operator: new Set(['contract:read', 'batch:submit', 'batch:read', 'batch:replay', 'quarantine:read', 'quarantine:resolve',
     'record:read', 'lineage:read', 'report:read', 'extract:run']),
   reporter: new Set(['contract:read', 'batch:read', 'report:read', 'extract:run']),

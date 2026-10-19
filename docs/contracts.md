@@ -66,23 +66,25 @@ A mapping takes `from` (one column, or several columns joined with `separator`, 
 `POST /api/v1/tenants/:tenant/contracts`:
 
 1. **Validate**: JSON Schema, then semantic checks (cross-references, type compatibility, parse/type agreement, key and order-by rules, filterability, migration hints).
-2. **Plan** against the active version: a deterministic, reviewable document listing every change with its classification, the exact DDL, the data operations, current-row impact and the rollback path. Dry-run with `POST …/contracts/validate`.
+2. **Plan** against the active version: a deterministic, reviewable document listing each change with its classification, the table DDL, the view statements that will be regenerated (`view_ddl`), the data operations, the number of distinct current rows affected, and the rollback path. Dry-run with `POST …/contracts/validate`.
 3. **Apply or hold**:
    - `initial` or `compatible` → applied immediately (DDL + regenerated views + lifecycle), HTTP 201.
-   - `requires_approval` (any breaking change) → stored as `pending_approval`, HTTP 202. Nothing changes until a **different** administrator approves with `confirm_version` (self-approval can be enabled with `ALLOW_SELF_APPROVAL=true` only outside production). Further publishes return 409 until it is decided.
+   - `requires_approval` (any breaking change) → stored as `pending_approval`, HTTP 202. Nothing changes until an **approver** approves with `confirm_version`. Approvers are a separate role: they see no tenant data, and only the platform administrator can issue their tokens, so no tenant admin can approve their own change. Further publishes return 409 until it is decided.
    - `rejected` (any unsupported change) → nothing stored, HTTP 422, audited.
 
-Generated DDL is limited to `CREATE SCHEMA/TABLE/INDEX IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN`, safe `ALTER COLUMN TYPE` widenings, and view regeneration. Identifiers are pattern-validated and quoted. **No DDL ever drops or truncates.**
+Generated DDL is limited to `CREATE SCHEMA/TABLE/INDEX IF NOT EXISTS`, `ALTER TABLE … ADD COLUMN` and safe `ALTER COLUMN TYPE` widenings. Generated views (`current_*`, `rpt_*`, `rpt_trusted_*`) are dropped and recreated around that DDL, because views pin the column types they read. Identifiers are pattern-validated and quoted. **No generated statement drops or truncates a table or column.**
 
 ### Compatibility rules
 
 | Change | Classification | What happens |
 |---|---|---|
-| Add entity; add optional field; add enum values; widen integer→decimal or decimal precision/scale; enum→string; add a `warning` rule; change mappings, outputs or dataset checks | compatible | Applied on publish. Existing records keep their contract and transform versions. |
-| Add a non-nullable field **with** `migration.backfill`; make a field non-nullable **with** backfill; replace enum values **with** `migration.value_maps`; remove a field or entity; add/change/remove an `error` rule; change correction semantics, relationships, constraints or requiredness; **lower a field's sensitivity** | breaking: requires approval and a major version | Applied only after approval. Data operations write **new record versions** tagged `_migration_id`. Prior versions are never edited, so they keep their original meaning. Removed fields and entities keep their columns and data. |
+| Add entity or source; add optional field; make a field optional or nullable; add enum values; widen integer→decimal or decimal precision/scale; enum→string; add a `warning` rule; change mappings, outputs, dataset checks or freshness; tighten a reject threshold, add control totals or strengthen the sensitive scan | compatible | Applied on publish. Existing records keep their contract and transform versions. |
+| Add a non-nullable field **with** `migration.backfill`; make a field non-nullable **with** backfill; replace enum values **with** `migration.value_maps`; remove a field or entity; add/change/remove an `error` rule; change correction semantics, relationships, constraints or requiredness; **lower a field's sensitivity**; remove a source; **raise a source's `max_reject_rate`, remove a control-total field, or weaken `sensitive_scan` from quarantine to warn** | breaking: requires approval and a major version | Applied only after approval. Data operations write **new record versions** tagged `_migration_id`. Prior versions are never edited, so they keep their original meaning. Removed fields and entities keep their columns and data. |
 | Change an entity key; change type in a way that can alter meaning (e.g. decimal→integer); narrow precision/scale; remove enum values or add non-nullable fields **without** a declared mapping/backfill; version not greater than active | unsupported | Rejected with reasons. |
 
 **Rollback.** `POST …/migrations/:id/rollback` deletes the migration-created versions, makes the superseded ones current again and re-activates the previous contract. It is allowed only until a batch has been processed under the new version (409 `rollback_window_closed` afterwards), because after that rolling back would discard real data. Past that point the strategy is to roll forward with a new version. Added columns are retained, unused. Scenario H exercises the full path.
+
+**Batches queued across a migration.** A batch is pinned to the contract that was active when it arrived. If a migration is applied while it waits, processing checks what changed. If every intervening migration was compatible, the batch is re-pinned to the active contract (audited as `batch.repinned`). If any was breaking, the batch fails with `ContractSupersededError` and has no effects; replaying it re-processes the staged rows under the active contract.
 
 ## The two demonstration tenants
 

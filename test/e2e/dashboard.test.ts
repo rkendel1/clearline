@@ -68,6 +68,8 @@ test('Scenario J (dashboard): rendered metrics equal ground truth and independen
   // The untrusted batch is visibly distinguished from a successful run, with its reason.
   const page = await signIn(DEV_TOKENS.northwind.operator);
   assert.match(await page.textContent('[data-testid=verdict]') ?? '', /1 batch is not trusted/);
+  const apiVerdict = (await client(ctx, DEV_TOKENS.northwind.operator).get('/api/v1/tenants/northwind/reports/operations')).body.verdict;
+  assert.equal(await page.getAttribute('[data-testid=verdict]', 'data-status'), apiVerdict.status, 'dashboard renders the API verdict');
   const untrustedRow = page.locator('tr[data-batch]', { hasText: 'Not trusted' });
   assert.equal(await untrustedRow.count(), 1);
   assert.match(await untrustedRow.textContent() ?? '', /Ran/);
@@ -82,6 +84,13 @@ test('Scenario J (dashboard): rendered metrics equal ground truth and independen
   assert.match(await rep.textContent('h1') ?? '', /bluefin/);
   assert.equal(await rep.locator('[data-metric="claims_total"]').count(), 0, 'no northwind metrics leak into the bluefin view');
   lines.push('bluefin reporter: no lineage navigation, only bluefin metrics rendered.');
+  // An approver sees only contract decisions, never tenant data.
+  const ap = await browser.newPage();
+  await ap.goto(base + '/'); await ap.fill('#token', DEV_TOKENS.northwind.approver); await ap.click('button[type=submit]');
+  await ap.waitForSelector('#versions');
+  assert.deepEqual(await ap.$$eval('nav a', (as) => as.map((a) => a.textContent)), ['Contracts']);
+  await ap.close();
+  lines.push('approver: lands on Contracts, the only navigation item; no data views.');
   await page.close(); await rep.close();
 
   evidence('Scenario J — Reporting correctness (dashboard, Chromium)', lines);

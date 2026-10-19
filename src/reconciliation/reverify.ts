@@ -14,7 +14,8 @@ import type { ReconResult } from './batch.js';
 
 /** Record legitimate removals (erasure, retention) so re-verification does not flag them as drift. */
 export async function recordRemovalAdjustments(tx: Tx, tenant: string, entity: string, where: string, params: unknown[], reason: string) {
-  const batches = (await tx.query(`SELECT "_batch_id" AS b, count(*)::int AS n FROM ${table(tenant, entity)} WHERE "_migration_id" IS NULL AND (${where}) GROUP BY 1`, params)).rows;
+  const batches = (await tx.query(`SELECT "_batch_id" AS b, count(*) FILTER (WHERE "_migration_id" IS NULL)::int AS n, count(*) FILTER (WHERE "_migration_id" IS NOT NULL)::int AS m
+      FROM ${table(tenant, entity)} WHERE (${where}) GROUP BY 1`, params)).rows;
   for (const row of batches) {
     const b = (await tx.query(`SELECT source_id, contract_version_id FROM core.batches WHERE id = $1`, [row.b])).rows[0];
     const cv = await getContractVersion(tx, Number(b.contract_version_id));
@@ -24,7 +25,7 @@ export async function recordRemovalAdjustments(tx: Tx, tenant: string, entity: s
       const r = await tx.query(`SELECT coalesce(sum(${ident(f)}),0)::text AS s FROM ${table(tenant, entity)} WHERE "_batch_id" = $${params.length + 1} AND "_migration_id" IS NULL AND (${where})`, [...params, row.b]);
       sums[f] = r.rows[0].s;
     }
-    await tx.query(`INSERT INTO core.batch_adjustments (tenant_id, batch_id, reason, rows_removed, sums_removed) VALUES ($1,$2,$3,$4,$5)`, [tenant, row.b, reason, row.n, JSON.stringify(sums)]);
+    await tx.query(`INSERT INTO core.batch_adjustments (tenant_id, batch_id, reason, rows_removed, sums_removed, migration_rows_removed) VALUES ($1,$2,$3,$4,$5,$6)`, [tenant, row.b, reason, row.n, JSON.stringify(sums), row.m]);
   }
 }
 
@@ -35,7 +36,8 @@ export async function reverifyBatches(tx: Tx, tenant: string, runId: string, act
   for (const b of batches) {
     const cv = await getContractVersion(tx, Number(b.contract_version_id));
     const fields = cv.document.sources[b.source_id]?.control_totals?.sum_fields ?? [];
-    const adj = (await tx.query(`SELECT coalesce(sum(rows_removed),0)::int AS n, coalesce(jsonb_agg(sums_removed),'[]'::jsonb) AS s FROM core.batch_adjustments WHERE batch_id = $1`, [b.id])).rows[0];
+    const adj = (await tx.query(`SELECT coalesce(sum(rows_removed),0)::int AS n, coalesce(jsonb_agg(sums_removed),'[]'::jsonb) AS s,
+        coalesce(sum(migration_rows_added),0)::int AS madd, coalesce(sum(migration_rows_removed),0)::int AS mrem FROM core.batch_adjustments WHERE batch_id = $1`, [b.id])).rows[0];
     const t = table(tenant, b.entity);
     const actual = (await tx.query(`SELECT count(*)::int AS n${fields.map((f, i) => `, coalesce(sum(${ident(f)}),0)::text AS s${i}`).join('')} FROM ${t} WHERE "_batch_id" = $1 AND "_migration_id" IS NULL`, [b.id])).rows[0];
     const results: ReconResult[] = [];
@@ -53,6 +55,21 @@ export async function reverifyBatches(tx: Tx, tenant: string, runId: string, act
       const ok = !/[1-9]/.test(diff);
       results.push({ check_id: `reverify:target_sum:${f}`, status: ok ? 'passed' : 'failed', expected: { expected_now: expected }, actual: { persisted: actual[`s${i}`] }, difference: { amount: diff },
         explanation: ok ? `Persisted ${f} still equals the accepted total net of recorded removals (${expected}).` : `Persisted ${f} is ${actual[`s${i}`]} but ${expected} is expected: difference ${diff} not explained by any recorded erasure or retention.` });
+    }
+    // Versions created by contract migrations (after a backfill these are the CURRENT rows): their number must
+    // match what migrations recorded, and their control-total fields must equal the versions they superseded.
+    const mig = (await tx.query(`SELECT count(*)::int AS n FROM ${t} WHERE "_batch_id" = $1 AND "_migration_id" IS NOT NULL`, [b.id])).rows[0].n;
+    const expectedMig = adj.madd - adj.mrem;
+    if (expectedMig > 0 || mig > 0) {
+      results.push({ check_id: 'reverify:migration_versions', status: mig === expectedMig ? 'passed' : 'failed', expected: { created_by_migrations: adj.madd, removed: adj.mrem, expected_now: expectedMig },
+        actual: { persisted: mig }, difference: { rows: mig - expectedMig },
+        explanation: mig === expectedMig ? `All ${mig} migration-created versions for this batch are present.` : `${Math.abs(mig - expectedMig)} migration-created version(s) ${mig < expectedMig ? 'missing — deleted outside the platform' : 'unexpected — inserted outside the platform'}.` });
+      for (const f of fields) {
+        const d = (await tx.query(`SELECT count(*)::int AS n, coalesce(sum(m.${ident(f)} - o.${ident(f)}), 0)::text AS diff FROM ${t} m JOIN ${t} o ON o."_record_id" = m."_supersedes_record_id"
+            WHERE m."_batch_id" = $1 AND m."_migration_id" IS NOT NULL AND m.${ident(f)} IS DISTINCT FROM o.${ident(f)}`, [b.id])).rows[0];
+        results.push({ check_id: `reverify:migration_sum:${f}`, status: d.n === 0 ? 'passed' : 'failed', expected: { mismatched_versions: 0 }, actual: { mismatched_versions: d.n }, difference: { amount: d.diff },
+          explanation: d.n === 0 ? `Every migration-created version carries the same ${f} as the version it superseded.` : `${d.n} migration-created version(s) have a ${f} different from the version they superseded (net ${d.diff}): changed outside the platform.` });
+      }
     }
     for (const r of results) {
       await tx.query(`INSERT INTO core.reconciliation_results (tenant_id, batch_id, run_id, scope, check_id, status, expected, actual, difference, explanation, contract_version_id)
