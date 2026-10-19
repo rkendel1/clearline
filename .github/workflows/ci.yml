@@ -29,8 +29,8 @@ jobs:
       PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
       PGHOST_URL: postgres://clearline:clearline@localhost:5432
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -70,7 +70,7 @@ jobs:
           BENCH_PARALLEL_ROWS: "1000"
       - name: Upload test evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: test-results
           path: test-results/
@@ -79,7 +79,7 @@ jobs:
     name: secret scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - name: gitleaks
@@ -91,7 +91,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build image
         run: docker compose build
       - name: Start stack

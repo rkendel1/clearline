@@ -1,6 +1,6 @@
 # Test results
 
-Recorded from **one clean checkout of commit `119ebf2`**: fresh `git clone`, `npm ci`, a new PostgreSQL 16 database per suite, nothing reused from development. Raw outputs are in [`test-results/`](../test-results/). The same suites run in GitHub Actions on every push and pull request ([workflow](../.github/workflows/ci.yml)).
+Recorded from **one clean checkout of commit `119ebf2`**: fresh `git clone`, `npm ci`, a new PostgreSQL 16 database per suite, nothing reused from development. Raw outputs are in [`test-results/`](../test-results/). The same suites run in GitHub Actions on every push and pull request ([workflow](../.github/workflows/ci.yml)). The first fully green run on GitHub, on commit `d471f21`, was [run 39337540767](https://github.com/rkendel1/clearline/actions/runs/39337540767): tests, image build with Compose smoke test, and secret scan.
 
 **Environment.** Linux VM, 2 vCPU (Intel Xeon 2.8 GHz, KVM), 7.8 GB RAM, Node.js 22.22, PostgreSQL 16.15 on the same host, Chromium (Playwright 1.56).
 
