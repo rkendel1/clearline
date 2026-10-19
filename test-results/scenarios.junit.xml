@@ -1,47 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-	<testcase name="Scenario A: valid batch flows from source row to metric and extract" time="0.957566" classname="test"/>
-	<testcase name="Scenario B: two tenants, two canonical models, one codebase" time="1.059969" classname="test"/>
-	<testcase name="Scenario C: duplicate submissions have no duplicate business effects" time="0.960542" classname="test"/>
-	<testcase name="Scenario D: invalid records are quarantined with actionable errors and excluded from metrics" time="0.708148" classname="test"/>
-	<testcase name="Scenario E: corrections supersede, late versions become history, conflicts are quarantined" time="0.869742" classname="test"/>
-	<testcase name="Scenario F1: worker killed mid-transaction recovers safely after restart" time="5.727502" classname="test"/>
-	<testcase name="Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly" time="4.849276" classname="test"/>
-	<testcase name="Scenario G: cross-tenant and sensitive-export attempts are denied and audited" time="0.612661" classname="test"/>
-	<testcase name="Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely" time="0.765364" classname="test" failure="Expected values to be strictly equal:300 !== 347">
-		<failure type="testCodeFailure" message="Expected values to be strictly equal:300 !== 347">
-[Error [ERR_TEST_FAILURE]: Expected values to be strictly equal:
-
-300 !== 347
-] {
-  code: 'ERR_TEST_FAILURE',
-  failureType: 'testCodeFailure',
-  cause: AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
-  
-  300 !== 347
-  
-      at TestContext.&lt;anonymous> (/home/claude/clearline/test/scenarios/h-contract-evolution.test.ts:87:10)
-      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
-      at async Test.run (node:internal/test_runner/test:1054:7)
-      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3) {
-    generatedMessage: true,
-    code: 'ERR_ASSERTION',
-    actual: 300,
-    expected: 347,
-    operator: 'strictEqual',
-    diff: 'simple'
-  }
-}
-		</failure>
-	</testcase>
-	<testcase name="Scenario I: discrepancies are detected, explained, and removed from trusted outputs" time="1.220805" classname="test"/>
-	<testcase name="Scenario J: reports, SQL views and extracts agree with independent queries and ground truth" time="1.347833" classname="test"/>
+	<testcase name="Scenario A: valid batch flows from source row to metric and extract" time="0.982644" classname="test"/>
+	<testcase name="Scenario B: two tenants, two canonical models, one codebase" time="0.975610" classname="test"/>
+	<testcase name="Scenario C: duplicate submissions have no duplicate business effects" time="0.840260" classname="test"/>
+	<testcase name="Scenario D: invalid records are quarantined with actionable errors and excluded from metrics" time="0.751177" classname="test"/>
+	<testcase name="Scenario E: corrections supersede, late versions become history, conflicts are quarantined" time="0.832209" classname="test"/>
+	<testcase name="Scenario F1: worker killed mid-transaction recovers safely after restart" time="5.856488" classname="test"/>
+	<testcase name="Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly" time="4.953798" classname="test"/>
+	<testcase name="Scenario G: cross-tenant and sensitive-export attempts are denied and audited" time="0.639458" classname="test"/>
+	<testcase name="Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely" time="2.005411" classname="test"/>
+	<testcase name="Scenario I: discrepancies are detected, explained, and removed from trusted outputs" time="1.339360" classname="test"/>
+	<testcase name="Scenario J: reports, SQL views and extracts agree with independent queries and ground truth" time="1.237915" classname="test"/>
 	<!-- tests 11 -->
 	<!-- suites 0 -->
-	<!-- pass 10 -->
-	<!-- fail 1 -->
+	<!-- pass 11 -->
+	<!-- fail 0 -->
 	<!-- cancelled 0 -->
 	<!-- skipped 0 -->
 	<!-- todo 0 -->
-	<!-- duration_ms 28275.403254 -->
+	<!-- duration_ms 30376.414677 -->
 </testsuites>
