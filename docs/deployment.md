@@ -55,7 +55,7 @@ The first release needs no Kubernetes. A conventional managed deployment:
 |---|---|
 | Database | Managed PostgreSQL 16 (RDS / Cloud SQL / Azure Flexible Server) with PITR, encrypted storage, private networking only |
 | API | 2+ container instances (ECS Fargate / Cloud Run / App Service) behind a TLS load balancer. Health check `/healthz`; readiness gate `/readyz` |
-| Worker | Separate service, 1+ instances, no inbound traffic; stop timeout > `SHUTDOWN_GRACE_MS` |
+| Worker | Separate service, 1+ instances, no inbound traffic; stop timeout > `SHUTDOWN_GRACE_MS`; health check `node dist/src/worker-health.js` (recent heartbeat in the database, or mid-batch) |
 | Migrations | One-off task (`node dist/src/cli.js migrate`) run by the deploy pipeline before rolling the services; `/readyz` refuses traffic while migrations are pending |
 | Retention / reconciliation re-verify | Scheduled tasks (EventBridge / Cloud Scheduler) calling the CLI or the API with an admin token |
 | Secrets | Platform secret store → environment variables |

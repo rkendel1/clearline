@@ -68,7 +68,13 @@ services:
   worker:
     <<: *app
     command: ["node", "dist/src/worker-main.js"]
-    healthcheck: { disable: true }
+    # Healthy when this container's worker has a recent heartbeat in the database (or is mid-batch).
+    healthcheck:
+      test: ["CMD", "node", "dist/src/worker-health.js"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
     depends_on: { seed: { condition: service_completed_successfully } }
     stop_grace_period: 30s
     deploy: { replicas: 1, resources: { limits: { cpus: "1", memory: 768m } } }
