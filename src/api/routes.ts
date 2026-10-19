@@ -3,7 +3,16 @@
 // docs/api.md is generated from this table (npm run docs:api).
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { can, type Permission, type Principal } from '../control/auth.js';
+import { can, ROLE_PERMISSIONS, type Permission, type Principal } from '../control/auth.js';
+import { cancel as cancelQuery, execute as executeQuery, exportCsv as exportQuery, getCatalog, getProposal, history as queryHistory, propose } from '../query/service.js';
+import { changeFieldPolicy, fieldPolicyHistory, listFieldPolicies } from '../policy/service.js';
+import { contractForViewer, loadPolicies, type FieldViewer } from '../policy/fields.js';
+import type { Tx } from '../platform/db.js';
+
+async function viewerFor(tx: Tx, tenant: string, p: Principal): Promise<FieldViewer | null> {
+  const a = await getActiveContract(tx, tenant);
+  return a ? (await loadPolicies(tx, tenant, a.document)).viewer(p.role) : null;
+}
 import { badRequest, notFound } from '../platform/errors.js';
 import { withTenant } from '../platform/db.js';
 import { createTenant, getTenant, issueToken, listTokens, revokeToken } from '../control/tenants.js';
@@ -44,7 +53,7 @@ const route = (method: RouteDef['method'], url: string, perm: RouteDef['perm'], 
   R.push({ method, url, perm, summary, tenantScoped: url.includes(':tenant'), handler });
 
 // ---- identity & platform administration
-route('GET', '/api/v1/me', 'authenticated', 'Describe the calling principal (tenant, role, permissions).', async (_r, _rep, p) => ({ actor: p.actor, tenant_id: p.tenantId, role: p.role }));
+route('GET', '/api/v1/me', 'authenticated', 'Describe the calling principal (tenant, role, permissions).', async (_r, _rep, p) => ({ actor: p.actor, tenant_id: p.tenantId, role: p.role, permissions: [...ROLE_PERMISSIONS[p.role]].sort() }));
 route('GET', '/api/v1/contract-schema', null, 'The formal JSON Schema (2020-12) for tenant contracts.', async () => CONTRACT_SCHEMA);
 route('POST', '/api/v1/tenants', 'tenant:create', 'Create a tenant (schema, reporting role, retention policy). Body: {id, name, retention?}.', async (r, rep, p) => {
   const b = body(r);
@@ -63,8 +72,14 @@ route('POST', '/api/v1/tenants/:tenant/tokens/:name/revoke', 'token:issue', 'Rev
 route('GET', '/api/v1/tenants/:tenant', 'contract:read', 'Tenant details and retention policy.', async (r) => getTenant(T(r)));
 route('GET', '/api/v1/tenants/:tenant/contracts', 'contract:read', 'All contract versions with lifecycle state.', async (r) =>
   withTenant(T(r), async (tx) => (await tx.query(`SELECT id, contract_id, version, lifecycle, document_hash, transform_version, created_by, created_at, activated_at FROM core.contract_versions WHERE tenant_id = $1 ORDER BY id`, [T(r)])).rows));
-route('GET', '/api/v1/tenants/:tenant/contracts/active', 'contract:read', 'The active contract document.', async (r) =>
-  withTenant(T(r), async (tx) => { const a = await getActiveContract(tx, T(r)); if (!a) throw notFound('no active contract'); return { id: a.id, version: a.version, transform_version: a.transform_version, document: a.document }; }));
+route('GET', '/api/v1/tenants/:tenant/contracts/active', 'contract:read', 'The active contract document (fields hidden from your role by field policy are omitted).', async (r, _rep, p) =>
+  withTenant(T(r), async (tx) => {
+    const a = await getActiveContract(tx, T(r));
+    if (!a) throw notFound('no active contract');
+    // Fields hidden from the role by policy are removed from the document it is shown.
+    const viewer = (await loadPolicies(tx, T(r), a.document)).viewer(p.role);
+    return { id: a.id, version: a.version, transform_version: a.transform_version, document: contractForViewer(a.document, viewer) };
+  }));
 route('POST', '/api/v1/tenants/:tenant/contracts/validate', 'contract:read', 'Dry run: validate a contract and show the migration plan without changing anything.', async (r) => {
   const v = validateContract(r.body);
   if (!v.ok) return { valid: false, issues: v.issues };
@@ -123,12 +138,16 @@ route('GET', '/api/v1/tenants/:tenant/batches/:id', 'batch:read', 'Batch detail:
     const { lease_owner: _lo, ...rest } = b;
     return { ...rest, processing_run_id: b.attempt_count ? `${id}#${b.attempt_count}` : null, attempts, submissions, quality_results: quality, reconciliation };
   }));
-route('GET', '/api/v1/tenants/:tenant/batches/:id/findings', 'quarantine:read', 'Per-record quality findings for a batch (affected records). Query: rule_id?, limit?.', async (r) => {
+route('GET', '/api/v1/tenants/:tenant/batches/:id/findings', 'quarantine:read', 'Per-record quality findings for a batch (affected records). Query: rule_id?, limit?.', async (r, _rep, p) => {
   const q = query(r);
   if (!/^[0-9a-f-]{36}$/.test(params(r).id)) throw notFound('batch');
-  return withTenant(T(r), async (tx) => (await tx.query(`SELECT f.raw_record_id, rr.row_number AS source_row, f.rule_id, f.severity, f.category, f.field, f.message
-      FROM core.quality_findings f JOIN core.raw_records rr ON rr.id = f.raw_record_id WHERE f.batch_id = $1 AND f.tenant_id = $2 AND ($3::text IS NULL OR f.rule_id = $3)
-      ORDER BY rr.row_number, f.id LIMIT $4`, [params(r).id, T(r), q.rule_id ?? null, int(q.limit, 1000, 10000)])).rows);
+  return withTenant(T(r), async (tx) => {
+    const viewer = await viewerFor(tx, T(r), p);
+    const { rows } = await tx.query(`SELECT f.raw_record_id, rr.row_number AS source_row, f.rule_id, f.severity, f.category, f.field, f.message, b.entity
+      FROM core.quality_findings f JOIN core.raw_records rr ON rr.id = f.raw_record_id JOIN core.batches b ON b.id = f.batch_id WHERE f.batch_id = $1 AND f.tenant_id = $2 AND ($3::text IS NULL OR f.rule_id = $3)
+      ORDER BY rr.row_number, f.id LIMIT $4`, [params(r).id, T(r), q.rule_id ?? null, int(q.limit, 1000, 10000)]);
+    return rows.map(({ entity, ...f }) => ({ ...f, field: f.field && viewer?.level(entity, f.field) === 'hidden' ? null : f.field, message: viewer ? viewer.message(entity, f.field, f.message) : f.message }));
+  });
 });
 route('POST', '/api/v1/tenants/:tenant/batches/:id/replay', 'batch:replay', 'Re-queue a failed batch for processing (safe: failed attempts left no effects).', async (r, _rep, p) => {
   const res = await replayBatch(T(r), params(r).id);
@@ -141,7 +160,7 @@ route('POST', '/api/v1/tenants/:tenant/batches/:id/replay', 'batch:replay', 'Re-
 route('GET', '/api/v1/tenants/:tenant/quarantine', 'quarantine:read', 'Quarantined records with actionable reasons. Query: status=open|resolved|all, batch_id?.', async (r, _rep, p) => {
   const q = query(r);
   if (q.batch_id && !/^[0-9a-f-]{36}$/.test(q.batch_id)) throw badRequest('invalid_parameter', 'batch_id must be a UUID');
-  const rep = await exceptionReport(T(r), { status: (q.status as never) ?? 'open', limit: int(q.limit, 500, 5000), batchId: q.batch_id, canSeeSensitive: can(p, 'record:read_sensitive') });
+  const rep = await exceptionReport(T(r), { status: (q.status as never) ?? 'open', limit: int(q.limit, 500, 5000), batchId: q.batch_id, role: p.role });
   return rep.quarantined;
 });
 route('POST', '/api/v1/tenants/:tenant/quarantine/:id/resolve', 'quarantine:resolve', 'Mark a quarantined record resolved. Body: {resolution}. The record is not admitted; resubmit corrected data.', async (r, _rep, p) =>
@@ -157,20 +176,21 @@ route('POST', '/api/v1/tenants/:tenant/quarantine/:id/resolve', 'quarantine:reso
 // ---- records & lineage
 route('GET', '/api/v1/tenants/:tenant/entities/:entity/records', 'record:read', 'Current canonical records (sensitive fields redacted unless permitted). Query: limit?, offset?.', async (r, _rep, p) => {
   const q = query(r);
-  return listRecords(T(r), params(r).entity, { limit: int(q.limit, 100, 1000), offset: int(q.offset, 0, 10_000_000), canSeeSensitive: can(p, 'record:read_sensitive') });
+  return listRecords(T(r), params(r).entity, { limit: int(q.limit, 100, 1000), offset: int(q.offset, 0, 10_000_000), role: p.role });
 });
 route('GET', '/api/v1/tenants/:tenant/lineage/:entity/:key', 'lineage:read', 'Full lineage for one record key: source row, batch, contract/transform versions, quality, reconciliation, metrics, exports.', async (r, _rep, p) =>
-  recordLineage(T(r), params(r).entity, params(r).key, can(p, 'record:read_sensitive')));
+  recordLineage(T(r), params(r).entity, params(r).key, p.role));
 
 // ---- reporting
 route('GET', '/api/v1/tenants/:tenant/reports/operations', 'report:read', 'Data operations report: volumes, failures, freshness, quality trend, reconciliation, latency, queue. Query: from?, to?.', async (r) => operationsReport(T(r), defaultWindow(query(r))));
-route('GET', '/api/v1/tenants/:tenant/reports/business', 'report:read', 'Business summary: contract-declared metrics over trusted data, plus exception rate.', async (r) => businessSummary(T(r)));
+route('GET', '/api/v1/tenants/:tenant/reports/business', 'report:read', 'Business summary: contract-declared metrics over trusted data, plus exception rate.', async (r, _rep, p) => businessSummary(T(r), p.role));
 route('GET', '/api/v1/tenants/:tenant/reports/exceptions', 'report:read', 'Exception report: quarantined records, conflicts, late arrivals, orphaned references, batches needing review.', async (r, _rep, p) =>
-  exceptionReport(T(r), { status: (query(r).status as never) ?? 'open', canSeeSensitive: can(p, 'record:read_sensitive') }));
-route('GET', '/api/v1/tenants/:tenant/metrics/definitions', 'report:read', 'Definitions of every reported metric (declared by contract and platform-defined).', async (r) =>
+  exceptionReport(T(r), { status: (query(r).status as never) ?? 'open', role: p.role }));
+route('GET', '/api/v1/tenants/:tenant/metrics/definitions', 'report:read', 'Definitions of every reported metric (declared by contract and platform-defined).', async (r, _rep, p) =>
   withTenant(T(r), async (tx) => {
     const a = await getActiveContract(tx, T(r));
-    return { contract_version: a?.version ?? null, declared: a?.document.outputs.metrics.map((m) => ({ ...m, source: `${m.entity} current versions joined to batches`, trust_scope: 'trusted batches only (value); all batches (value_including_untrusted)', refresh: 'computed at query time from committed data' })) ?? [], platform: PLATFORM_METRIC_DEFINITIONS };
+    const doc = a ? contractForViewer(a.document, (await loadPolicies(tx, T(r), a.document)).viewer(p.role)) : null;
+    return { contract_version: a?.version ?? null, declared: doc?.outputs.metrics.map((m) => ({ ...m, source: `${m.entity} current versions joined to batches`, trust_scope: 'trusted batches only (value); all batches (value_including_untrusted)', refresh: 'computed at query time from committed data' })) ?? [], platform: PLATFORM_METRIC_DEFINITIONS };
   }));
 route('GET', '/api/v1/tenants/:tenant/reconciliation', 'report:read', 'Latest dataset-level reconciliation run and recent batch reconciliation failures.', async (r) =>
   withTenant(T(r), async (tx) => ({
@@ -185,10 +205,20 @@ route('POST', '/api/v1/tenants/:tenant/reconciliation/run', 'batch:replay', 'Run
 });
 
 // ---- extracts
-route('GET', '/api/v1/tenants/:tenant/extracts', 'extract:run', 'Declared extracts with their explicit schemas.', async (r) =>
-  withTenant(T(r), async (tx) => { const a = await getActiveContract(tx, T(r)); return a ? a.document.outputs.extracts.map((x) => extractSchema(a.document, x)) : []; }));
-route('GET', '/api/v1/tenants/:tenant/extracts/:id/schema', 'extract:run', 'Explicit schema of one extract.', async (r) =>
-  withTenant(T(r), async (tx) => { const a = await getActiveContract(tx, T(r)); const x = a?.document.outputs.extracts.find((e) => e.id === params(r).id); if (!a || !x) throw notFound('extract'); return extractSchema(a.document, x); }));
+route('GET', '/api/v1/tenants/:tenant/extracts', 'extract:run', 'Declared extracts with their explicit schemas (as your role receives them).', async (r, _rep, p) =>
+  withTenant(T(r), async (tx) => {
+    const a = await getActiveContract(tx, T(r));
+    if (!a) return [];
+    const viewer = (await loadPolicies(tx, T(r), a.document)).viewer(p.role);
+    return a.document.outputs.extracts.map((x) => extractSchema(a.document, x, viewer));
+  }));
+route('GET', '/api/v1/tenants/:tenant/extracts/:id/schema', 'extract:run', 'Explicit schema of one extract (as your role receives it).', async (r, _rep, p) =>
+  withTenant(T(r), async (tx) => {
+    const a = await getActiveContract(tx, T(r));
+    const x = a?.document.outputs.extracts.find((e) => e.id === params(r).id);
+    if (!a || !x) throw notFound('extract');
+    return extractSchema(a.document, x, (await loadPolicies(tx, T(r), a.document)).viewer(p.role));
+  }));
 route('GET', '/api/v1/tenants/:tenant/extracts/:id/csv', 'extract:run', 'Run an extract as CSV. Query: as_of?, filters? (JSON), include_untrusted?, include_sensitive? (admin only). Metadata in X-Clearline-* headers.', async (r, rep, p) => {
   const q = query(r);
   let filters: Record<string, unknown> | undefined;
@@ -210,5 +240,35 @@ route('GET', '/api/v1/tenants/:tenant/audit', 'audit:read', 'Audit trail (append
 route('POST', '/api/v1/tenants/:tenant/retention/run', 'retention:run', 'Apply the tenant retention policy now.', async (r, _rep, p) => runRetention(p, T(r)));
 route('POST', '/api/v1/tenants/:tenant/subjects/:entity/:key/erase', 'subject:erase', 'Erase one subject (all versions, raw payloads, quarantine) and log affected exports.', async (r, _rep, p) =>
   eraseSubject(p, T(r), params(r).entity, params(r).key));
+
+// ---- analytical query workspace (docs/query-workspace.md). Generation never executes; execution needs an explicit call.
+route('GET', '/api/v1/tenants/:tenant/queries/catalog', 'query:discover', 'Tables and columns this role may query, with access levels, relationships and metric definitions (metadata only).', async (_r, _rep, p) => getCatalog(p));
+route('POST', '/api/v1/tenants/:tenant/queries/proposals', 'query:propose', 'Create a query proposal from {question} (generated by the configured provider) or {sql, parent_id?} (hand-written or edited). Validates and estimates; never executes.', async (r, rep, p) => {
+  rep.code(201);
+  return propose(p, body(r));
+});
+route('GET', '/api/v1/tenants/:tenant/queries/proposals/:id', 'query:history', 'One proposal with its validation and executions (re-evaluated against your current access).', async (r, _rep, p) => getProposal(p, params(r).id));
+route('POST', '/api/v1/tenants/:tenant/queries/proposals/:id/execute', 'query:run', 'Run a proposal after re-validating it under the current policy. Body: {mode: preview|run}. Returns permitted, redacted rows; rows are not stored.', async (r, _rep, p) => {
+  const mode = String(body(r).mode ?? 'preview');
+  if (mode !== 'preview' && mode !== 'run') throw badRequest('invalid_mode', 'mode must be preview or run');
+  return executeQuery(p, params(r).id, mode);
+});
+route('POST', '/api/v1/tenants/:tenant/queries/proposals/:id/export', 'query:export', 'Run a proposal and return CSV (same validation and redaction as execute).', async (r, rep, p) => {
+  const { csv, meta } = await exportQuery(p, params(r).id);
+  rep.header('content-type', 'text/csv; charset=utf-8');
+  rep.header('content-disposition', `attachment; filename="query_${params(r).id}.csv"`);
+  for (const [k, v] of Object.entries(meta)) rep.header(`x-clearline-${k.replace(/_/g, '-')}`, Array.isArray(v) ? v.join(',') : String(v));
+  return csv;
+});
+route('POST', '/api/v1/tenants/:tenant/queries/executions/:id/cancel', 'query:run', 'Cancel a running query execution.', async (r, _rep, p) => cancelQuery(p, params(r).id));
+route('GET', '/api/v1/tenants/:tenant/queries/history', 'query:history', 'Your query history (all=true for the whole tenant with query:history_all). Query: limit?.', async (r, _rep, p) =>
+  queryHistory(p, { limit: int(query(r).limit, 50, 200), all: bool(query(r).all) }));
+
+// ---- field sensitivity and redaction policy
+route('GET', '/api/v1/tenants/:tenant/fields/policies', 'policy:read', 'Field policies (sensitivity, redaction, unmask roles, role access) with the effective access of every role.', async (_r, _rep, p) => listFieldPolicies(p));
+route('POST', '/api/v1/tenants/:tenant/fields/:entity/:field/policy', 'policy:manage', 'Change one field policy (field "*" = table). Body: {sensitive?, redaction?, reason?, unmask_roles?, role_access?}. Widening requires policy:grant.', async (r, _rep, p) =>
+  changeFieldPolicy(p, params(r).entity, params(r).field, body(r)));
+route('GET', '/api/v1/tenants/:tenant/fields/policies/history', 'policy:read', 'Append-only version history of field policy changes. Query: entity?, field?, limit?.', async (r, _rep, p) =>
+  fieldPolicyHistory(p, { entity: query(r).entity, field: query(r).field, limit: int(query(r).limit, 200, 2000) }));
 
 export const ROUTES: readonly RouteDef[] = R;

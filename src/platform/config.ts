@@ -33,6 +33,25 @@ export interface Config {
   runWorkerInApi: boolean;
   dashboardDir: string;
   faultInjection: string;   // test-only fault hooks, ignored in production
+  // Analytical query workspace (docs/query-workspace.md)
+  nlSqlProvider: 'deterministic' | 'anthropic' | 'none';
+  nlSqlModel: string;
+  nlSqlTimeoutMs: number;
+  queryTimeoutMs: number;          // statement_timeout for analytical queries
+  queryMaxRows: number;            // rows returned by a run
+  queryPreviewRows: number;        // rows returned by a preview
+  queryMaxResultBytes: number;     // serialized result size cap
+  queryMaxCost: number;            // planner cost above which a query is refused before running
+  queryMaxConcurrentPerTenant: number;
+  queryMaxConcurrent: number;
+  queryDatabaseUrl: string;        // login used ONLY for analytical queries (no privileges of its own)
+  queryLoginRole: string;
+}
+
+function oneOf<T extends string>(name: string, allowed: readonly T[], def: T): T {
+  const v = (process.env[name] ?? def) as T;
+  if (!allowed.includes(v)) throw new Error(`Config ${name} must be one of ${allowed.join(', ')}, got "${v}"`);
+  return v;
 }
 
 let cached: Config | undefined;
@@ -58,7 +77,32 @@ export function loadConfig(): Config {
     runWorkerInApi: str('RUN_WORKER_IN_API', 'false') === 'true',
     dashboardDir: str('DASHBOARD_DIR', 'dashboard/dist'),
     faultInjection: env === 'production' ? '' : str('CLEARLINE_FAULT_INJECTION', ''),
+    nlSqlProvider: oneOf('NL_SQL_PROVIDER', ['deterministic', 'anthropic', 'none'] as const, 'deterministic'),
+    nlSqlModel: str('NL_SQL_MODEL', 'claude-opus-5-5'),
+    nlSqlTimeoutMs: int('NL_SQL_TIMEOUT_MS', 60_000),
+    queryTimeoutMs: int('QUERY_TIMEOUT_MS', 10_000),
+    queryMaxRows: int('QUERY_MAX_ROWS', 5_000),
+    queryPreviewRows: int('QUERY_PREVIEW_ROWS', 20),
+    queryMaxResultBytes: int('QUERY_MAX_RESULT_BYTES', 8 * 1024 * 1024),
+    queryMaxCost: int('QUERY_MAX_COST', 5_000_000),
+    queryMaxConcurrentPerTenant: int('QUERY_MAX_CONCURRENT_PER_TENANT', 2),
+    queryMaxConcurrent: int('QUERY_MAX_CONCURRENT', 4),
+    queryDatabaseUrl: '',
+    queryLoginRole: '',
   };
+  // Analytical queries connect as a separate login that owns no privileges (so RESET ROLE leaves
+  // it with nothing). Production must configure it explicitly; elsewhere it is derived from
+  // DATABASE_URL with a local-only password, and the application provisions the role.
+  const explicit = process.env.QUERY_DATABASE_URL;
+  if (explicit) cfg.queryDatabaseUrl = explicit;
+  else {
+    if (env === 'production' && !process.env.QUERY_DB_PASSWORD) throw new Error('QUERY_DATABASE_URL or QUERY_DB_PASSWORD is required in production');
+    const u = new URL(cfg.databaseUrl);
+    u.username = 'clearline_query';
+    u.password = process.env.QUERY_DB_PASSWORD ?? 'clearline-query-local-only';
+    cfg.queryDatabaseUrl = u.toString();
+  }
+  cfg.queryLoginRole = decodeURIComponent(new URL(cfg.queryDatabaseUrl).username);
   cached = cfg;
   return cfg;
 }

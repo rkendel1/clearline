@@ -6,7 +6,8 @@ import { withTenant, type Tx } from '../platform/db.js';
 import type { Contract } from '../contracts/types.js';
 import { notFound } from '../platform/errors.js';
 import { getActiveContract } from '../contracts/registry.js';
-import { SENSITIVE } from '../contracts/types.js';
+import type { Role } from '../control/auth.js';
+import { loadPolicies } from '../policy/fields.js';
 import { table } from '../contracts/compile.js';
 import { metricSql, orphanWhere } from './sql.js';
 import { ident } from '../platform/db.js';
@@ -114,14 +115,25 @@ export async function operationsReport(tenant: string, w: Window) {
   });
 }
 
-export async function businessSummary(tenant: string) {
+export async function businessSummary(tenant: string, role: Role) {
   return withTenant(tenant, async (tx) => {
     const active = await getActiveContract(tx, tenant);
     if (!active) throw notFound('no active contract');
     const c = active.document;
     const failing = await failingDatasetChecks(tx, tenant, c);
+    const viewer = (await loadPolicies(tx, tenant, c)).viewer(role);
     const metrics = [];
     for (const m of c.outputs.metrics) {
+      // A declared metric is an approved aggregate, but one computed over a field the role may not see in full is withheld
+      // (the same boundary the query workspace applies to aggregates over restricted fields).
+      const used = new Set<string>(m.field ? [m.field] : []);
+      JSON.stringify(m.filter ?? {}, (k, v) => { if ((k === 'field' || k === 'other_field') && typeof v === 'string') used.add(v); return v; });
+      if ([...used].some((f) => viewer.level(m.entity, f) === 'hidden')) continue;
+      if ([...used].some((f) => viewer.level(m.entity, f) !== 'full')) {
+        metrics.push({ id: m.id, title: m.title, description: m.description, unit: m.unit ?? 'count', entity: m.entity, aggregation: m.aggregation, field: m.field ?? null,
+          filter: m.filter ?? null, value: null, value_including_untrusted: null, untrusted_records_excluded: null, dataset_checks_failing: [], trusted: false, withheld: 'computed over a field your role may not see in full' });
+        continue;
+      }
       const e = c.entities[m.entity];
       const trusted = metricSql(tenant, m, e, 'trusted');
       const all = metricSql(tenant, m, e, 'all');
@@ -142,12 +154,14 @@ export async function businessSummary(tenant: string) {
   });
 }
 
-export async function exceptionReport(tenant: string, opts: { status?: 'open' | 'resolved' | 'all'; limit?: number; batchId?: string; canSeeSensitive: boolean }) {
+export async function exceptionReport(tenant: string, opts: { status?: 'open' | 'resolved' | 'all'; limit?: number; batchId?: string; role: Role }) {
   return withTenant(tenant, async (tx) => {
     const active = await getActiveContract(tx, tenant);
     if (!active) throw notFound('no active contract');
     const c = active.document;
-    const keySensitive = (en: string) => (c.entities[en]?.key ?? []).some((k) => SENSITIVE.has(c.entities[en].fields[k].sensitivity ?? 'internal'));
+    const viewer = (await loadPolicies(tx, tenant, c)).viewer(opts.role);
+    const showKey = (en: string, k: unknown) => (k === null || k === undefined ? k : c.entities[en] ? viewer.key(en, c.entities[en].key, k) : k);
+    const ruleField = (ruleId: string) => /^(?:type|required|not_null|constraint|privacy|rel|ref):(.+)$/.exec(ruleId)?.[1];
     const status = opts.status ?? 'open';
     const limit = Math.min(opts.limit ?? 500, 5000);
     const q = (await tx.query(
@@ -155,8 +169,8 @@ export async function exceptionReport(tenant: string, opts: { status?: 'open' | 
          FROM core.quarantine q JOIN core.batches b ON b.id = q.batch_id JOIN core.raw_records r ON r.id = q.raw_record_id
         WHERE q.tenant_id = $1 AND ($3::text IS NULL OR q.status = $3) AND ($4::uuid IS NULL OR q.batch_id = $4) ORDER BY q.created_at DESC, q.id LIMIT $2`,
       [tenant, limit, status === 'all' ? null : status, opts.batchId ?? null])).rows.map((r) => ({
-        ...r, record_key: r.record_key && keySensitive(r.entity) && !opts.canSeeSensitive ? '[redacted]' : r.record_key,
-        reasons: (r.errors as { message: string; rule_id: string }[]).map((e) => ({ rule_id: e.rule_id, message: e.message })), errors: undefined,
+        ...r, record_key: showKey(r.entity, r.record_key),
+        reasons: (r.errors as { message: string; rule_id: string; field?: string }[]).map((e) => ({ rule_id: e.rule_id, message: viewer.message(r.entity, e.field ?? ruleField(e.rule_id), e.message) })), errors: undefined,
       }));
     const summary = (await tx.query(`SELECT category, status, count(*)::int AS n FROM core.quarantine WHERE tenant_id = $1 GROUP BY 1,2 ORDER BY 1,2`, [tenant])).rows;
     const late: unknown[] = [];
@@ -164,13 +178,14 @@ export async function exceptionReport(tenant: string, opts: { status?: 'open' | 
     for (const [en, e] of Object.entries(c.entities)) {
       const rows = (await tx.query(`SELECT r."_record_id" AS record_id, r."_key" AS key, r."_batch_id" AS batch_id, r."_loaded_at" AS loaded_at
           FROM ${table(tenant, en)} r WHERE r."_is_late" ORDER BY r."_record_id" DESC LIMIT 200`)).rows;
-      late.push(...rows.map((r) => ({ entity: en, ...r, key: keySensitive(en) && !opts.canSeeSensitive ? '[redacted]' : r.key })));
+      late.push(...rows.map((r) => ({ entity: en, ...r, key: showKey(en, r.key) })));
       for (const rel of e.relationships ?? []) {
+        if (viewer.level(en, rel.field) === 'hidden') continue;
         const o = (await tx.query(`SELECT r."_record_id" AS record_id, r."_key" AS key, r.${ident(rel.field)}::text AS missing_reference, r."_batch_id" AS batch_id
             ${orphanWhere(tenant, en, rel)} ORDER BY r."_record_id" LIMIT 200`)).rows;
         orphans.push(...o.map((r) => ({ entity: en, relationship: rel.id, references: rel.references.entity, ...r,
-          key: keySensitive(en) && !opts.canSeeSensitive ? '[redacted]' : r.key,
-          missing_reference: SENSITIVE.has(e.fields[rel.field].sensitivity ?? 'internal') && !opts.canSeeSensitive ? '[redacted]' : r.missing_reference })));
+          key: showKey(en, r.key),
+          missing_reference: viewer.level(en, rel.field) === 'full' ? r.missing_reference : viewer.level(en, rel.field) === 'masked' ? viewer.present(en, rel.field, r.missing_reference).value : '[redacted]' })));
       }
     }
     const lateBatches = (await tx.query(`SELECT id, source_id, source_reported_at, arrival_at FROM core.batches WHERE tenant_id = $1 AND is_late ORDER BY arrival_at DESC LIMIT 100`, [tenant])).rows;

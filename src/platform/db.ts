@@ -43,8 +43,21 @@ export function getPool(): pg.Pool {
   return pool;
 }
 
+let queryPool: pg.Pool | undefined;
+
+/** Pool for analytical queries only: the query login role, which can do nothing until it SETs a query role. */
+export function getQueryPool(): pg.Pool {
+  if (!queryPool) {
+    const cfg = loadConfig();
+    queryPool = new pg.Pool({ connectionString: cfg.queryDatabaseUrl, max: cfg.queryMaxConcurrent + 1, statement_timeout: cfg.queryTimeoutMs, application_name: 'clearline-query' });
+    queryPool.on('error', () => { /* surfaced on next use */ });
+  }
+  return queryPool;
+}
+
 export async function closePool(): Promise<void> {
   if (pool) { const p = pool; pool = undefined; await p.end(); }
+  if (queryPool) { const p = queryPool; queryPool = undefined; await p.end(); }
 }
 
 async function inTx<T>(setup: (c: Tx) => Promise<void>, fn: (c: Tx) => Promise<T>): Promise<T> {
@@ -85,4 +98,39 @@ export function ident(name: string): string {
 
 export function tenantSchema(tenantId: string): string {
   return ident(`t_${tenantId}`);
+}
+
+/**
+ * Analytical query transaction on the query login (getQueryPool): READ ONLY, its own statement
+ * timeout, and SET LOCAL ROLE to the tenant's per-role query role (src/query/surface.ts). Row-level
+ * security resolves that role to its tenant. The session user owns no privileges, so even RESET ROLE
+ * would leave nothing to read. Everything is transaction-local; the pooled connection returns
+ * unchanged. Fails closed: if the role cannot be assumed, nothing runs. `onPid` receives the backend
+ * pid so the statement can be cancelled (cancelQueryBackend).
+ */
+export async function withQueryRole<T>(tenantId: string, dbRole: string, timeoutMs: number, fn: (c: Tx) => Promise<T>, onPid?: (pid: number) => void): Promise<T> {
+  const bound = requestTenant.getStore();
+  if (bound && bound.tenantId !== tenantId) throw new TenantScopeViolation(tenantId, bound.tenantId);
+  const client = await getQueryPool().connect();
+  try {
+    await client.query('BEGIN READ ONLY');
+    const { rows } = await client.query(`SELECT set_config('statement_timeout', $1, true), set_config('search_path', 'pg_catalog', true), pg_backend_pid() AS pid`, [String(timeoutMs)]);
+    onPid?.(rows[0].pid);
+    await client.query(`SET LOCAL ROLE ${ident(dbRole)}`);
+    const who = (await client.query(`SELECT current_user AS u, session_user AS s, current_setting('transaction_read_only') AS ro`)).rows[0];
+    if (who.u !== dbRole || who.s !== loadConfig().queryLoginRole || who.ro !== 'on') throw new Error('query role could not be established');
+    const result = await fn(client);
+    await client.query('COMMIT');
+    return result;
+  } catch (err) {
+    try { await client.query('ROLLBACK'); } catch { /* connection may be gone */ }
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** Cancel a running analytical statement (same session user, so no extra privilege is needed). */
+export async function cancelQueryBackend(pid: number): Promise<void> {
+  await getQueryPool().query('SELECT pg_cancel_backend($1)', [pid]);
 }

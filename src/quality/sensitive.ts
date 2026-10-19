@@ -18,3 +18,14 @@ export function detectSensitiveValue(v: string): string | null {
 export function isSuspiciousColumnName(name: string): boolean {
   return SUSPICIOUS_COLUMN.test(name);
 }
+
+/** Replace identifier-like values in free text (e.g. a typed question) with placeholders. */
+export function scrubSensitive(text: string): { text: string; kinds: string[] } {
+  const kinds: string[] = [];
+  let out = text;
+  for (const d of DETECTORS) {
+    const re = new RegExp(d.re.source, 'g');
+    if (re.test(out)) { kinds.push(d.kind); out = out.replace(new RegExp(d.re.source, 'g'), `[${d.kind}]`); }
+  }
+  return { text: out, kinds };
+}

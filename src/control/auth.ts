@@ -7,7 +7,8 @@ import { AppError, unauthorized } from '../platform/errors.js';
 import { metrics } from '../platform/metrics.js';
 import { audit } from './audit.js';
 
-export type Role = 'platform_admin' | 'admin' | 'approver' | 'operator' | 'reporter';
+export type Role = 'platform_admin' | 'admin' | 'approver' | 'steward' | 'operator' | 'reporter';
+export const DATA_ROLES = ['admin', 'steward', 'operator', 'reporter'] as const satisfies readonly Role[];
 
 export type Permission =
   | 'tenant:create' | 'token:issue'
@@ -16,19 +17,27 @@ export type Permission =
   | 'quarantine:read' | 'quarantine:resolve'
   | 'record:read' | 'record:read_sensitive' | 'lineage:read'
   | 'report:read' | 'extract:run' | 'extract:sensitive'
-  | 'audit:read' | 'retention:run' | 'subject:erase';
+  | 'audit:read' | 'retention:run' | 'subject:erase'
+  // Analytical query workspace and field-level policy (docs/query-workspace.md).
+  | 'query:discover' | 'query:propose' | 'query:run' | 'query:export' | 'query:history' | 'query:history_all'
+  | 'policy:read' | 'policy:manage' | 'policy:grant';
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   platform_admin: new Set(['tenant:create', 'token:issue']),
   admin: new Set(['token:issue', 'contract:read', 'contract:publish', 'batch:submit', 'batch:read', 'batch:replay',
     'quarantine:read', 'quarantine:resolve', 'record:read', 'record:read_sensitive', 'lineage:read', 'report:read', 'extract:run',
-    'extract:sensitive', 'audit:read', 'retention:run', 'subject:erase']),
+    'extract:sensitive', 'audit:read', 'retention:run', 'subject:erase',
+    'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'query:history_all', 'policy:read', 'policy:manage', 'policy:grant']),
   // Separation of duties: approvers only decide on contract migrations and see no tenant data.
   // Their tokens are issued by the platform administrator, never by tenant admins.
   approver: new Set(['contract:read', 'contract:approve']),
+  // Data stewards classify fields and can only make policies stricter (policy:grant loosens; admins only).
+  // They see original sensitive values only where a field policy lists them in unmask_roles.
+  steward: new Set(['contract:read', 'report:read', 'audit:read', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'query:history_all',
+    'policy:read', 'policy:manage']),
   operator: new Set(['contract:read', 'batch:submit', 'batch:read', 'batch:replay', 'quarantine:read', 'quarantine:resolve',
-    'record:read', 'lineage:read', 'report:read', 'extract:run']),
-  reporter: new Set(['contract:read', 'batch:read', 'report:read', 'extract:run']),
+    'record:read', 'lineage:read', 'report:read', 'extract:run', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'policy:read']),
+  reporter: new Set(['contract:read', 'batch:read', 'report:read', 'extract:run', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history']),
 };
 
 export interface Principal {
