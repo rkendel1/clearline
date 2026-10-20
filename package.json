@@ -23,18 +23,18 @@
     "demo": "tsx scripts/demo.ts",
     "benchmark": "tsx scripts/benchmark.ts",
     "test:e2e": "node --import tsx --test --test-concurrency=1 --test-reporter=spec test/e2e/*.test.ts",
-    "test:all": "npm test && npm --prefix dashboard run build && npm run test:e2e",
-    "dashboard:build": "npm --prefix dashboard run build",
-    "dashboard:dev": "npm --prefix dashboard run dev",
+    "test:all": "npm test && npm run native:build && npm run test:e2e",
     "docs:api": "tsx scripts/gen-api-docs.ts",
     "docs:examples": "tsx scripts/gen-examples.ts",
     "docs:reference": "tsx scripts/gen-reference-docs.ts",
-    "demo:record": "tsx scripts/record-demo.ts",
-    "test:mutation": "tsx scripts/mutation-check.ts"
+    "test:mutation": "tsx scripts/mutation-check.ts",
+    "native:build": "cargo build --release --manifest-path native/Cargo.toml",
+    "native:test": "cargo test --manifest-path native/Cargo.toml -p clearline-client",
+    "native:run": "cargo run --release --manifest-path native/Cargo.toml --bin clearline --",
+    "benchmark:query": "tsx scripts/benchmark-query.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
-    "@fastify/static": "^10.1.6",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "csv-parse": "^7.0.3",
@@ -46,7 +46,6 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
-    "playwright": "^1.56.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

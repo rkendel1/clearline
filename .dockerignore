@@ -1,8 +1,8 @@
 node_modules
-dashboard/node_modules
 dist
-dashboard/dist
 test-results
 .git
 .env
 *.log
+native/target
+native

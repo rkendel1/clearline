@@ -31,7 +31,6 @@ export interface Config {
   maxAttempts: number;
   shutdownGraceMs: number;
   runWorkerInApi: boolean;
-  dashboardDir: string;
   faultInjection: string;   // test-only fault hooks, ignored in production
   // Analytical query workspace (docs/query-workspace.md)
   nlSqlProvider: 'deterministic' | 'anthropic' | 'none';
@@ -75,7 +74,6 @@ export function loadConfig(): Config {
     maxAttempts: int('MAX_ATTEMPTS', 3),
     shutdownGraceMs: int('SHUTDOWN_GRACE_MS', 20_000),
     runWorkerInApi: str('RUN_WORKER_IN_API', 'false') === 'true',
-    dashboardDir: str('DASHBOARD_DIR', 'dashboard/dist'),
     faultInjection: env === 'production' ? '' : str('CLEARLINE_FAULT_INJECTION', ''),
     nlSqlProvider: oneOf('NL_SQL_PROVIDER', ['deterministic', 'anthropic', 'none'] as const, 'deterministic'),
     nlSqlModel: str('NL_SQL_MODEL', 'claude-opus-5-5'),
