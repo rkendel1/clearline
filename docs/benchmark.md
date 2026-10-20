@@ -157,17 +157,17 @@ npm run benchmark:analytics          # ABENCH_CLAIMS=5000 ABENCH_ITER=3 ABENCH_B
 
 ## Native client
 
-<!-- From test-results/native-perf.json (`npm run test:e2e`, 2026-10-20T00:44:06.010Z). -->
+<!-- From test-results/native-perf.json (`npm run test:e2e`, 2026-10-20T02:51:00.896Z). -->
 
 Release build of the GPUI client on the same machine, **without a GPU**: Xvfb + Mesa lavapipe (software Vulkan), window 1440×920. Timings are taken from `on_next_frame`, i.e. after GPUI has actually drawn. Software rasterization dominates frame time and scales with window area (the same scroll at 640×400 ran at about 60 fps), so these are pessimistic for a desktop with a GPU.
 
 | Measurement | Result |
 |---|---|
-| Process start → first frame | 130.59 ms (spawn → ready event 143 ms) |
-| 5,000-row result: request → first frame with rows | 256.74 ms (includes the API round trip) |
-| Scrolling 5,000 rows, frame interval p50 / p95 / max | 47.98 / 48.09 / 64.03 ms (23.16 fps mean, n=150) |
-| Typing in the SQL editor while a query runs | 63.72 / 79.68 / 95.78 ms (14.69 fps mean, n=120) |
-| Typing in the SQL editor, idle | 47.7 / 50.62 / 63.73 ms (20.78 fps mean, n=120) |
+| Process start → first frame | 276.17 ms (spawn → ready event 284 ms) |
+| 5,000-row result: request → first frame with rows | 228.19 ms (includes the API round trip) |
+| Scrolling 5,000 rows, frame interval p50 / p95 / max | 64.01 / 95.94 / 112.05 ms (14.7 fps mean, n=150) |
+| Typing in the SQL editor while a query runs | 79.65 / 127.68 / 143.67 ms (11.81 fps mean, n=120) |
+| Typing in the SQL editor, idle | 79.7 / 95.85 / 127.69 ms (11.61 fps mean, n=120) |
 
-- The UI thread is never blocked by a running query: API calls run on the background executor, and while a long-running query (a three-way cross join over claims) was executing, the longest frame interval was 95.78 ms (the e2e test fails above 1,000 ms). Frames are slower than idle typing (p50 63.72 vs 47.7 ms) because the API, PostgreSQL and the software rasterizer share the machine's CPUs during the query.
+- The UI thread is never blocked by a running query: API calls run on the background executor, and while a long-running query (a three-way cross join over claims) was executing, the longest frame interval was 143.67 ms (the e2e test fails above 1,000 ms). Frames are slower than idle typing (p50 79.65 vs 79.7 ms) because the API, PostgreSQL and the software rasterizer share the machine's CPUs during the query.
 - The grid is virtualized: only visible rows are laid out, so scroll cost does not grow with the result size.

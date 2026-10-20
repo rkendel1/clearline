@@ -8,7 +8,7 @@ Everything here is produced by the real API, worker, database and native client 
 docker compose up -d && docker compose run --rm demo
 ```
 
-The demo loads the reference dataset over HTTP, prints the platform's results next to the generator's ground truth, and then demonstrates the query workspace: the **same request under four roles**, an administrator's sensitivity change reaching every surface, a steward refused a widening, six bypass attempts, and a scan of the audit trail for SSNs. `--skip-query-demo` leaves the query part out; `--with-migration` also publishes Northwind 2.0.0 for approval. It exits non-zero on any mismatch.
+The demo loads the reference dataset over HTTP, prints the platform's results next to the generator's ground truth, and then demonstrates the query workspace: the **same request under four roles**, an administrator's sensitivity change reaching every surface, a steward refused a widening, six bypass attempts, and a scan of the audit trail for SSNs. Finally it demonstrates **saved analytics** in eight steps: saving the natural-language-generated query, running it against independent SQL, a daily schedule in New York time (with the DST change visible), a new version with typed date parameters and anomaly detection plus forecasting, a run executed by the worker's scheduler with its insights, in-app and email delivery (email is written to files in the worker container by `EMAIL_PROVIDER=file`), the run's audit trail, and a revoked identity whose next run is denied. Everything runs offline. `--skip-query-demo` and `--skip-analytics-demo` leave those parts out; `--with-migration` also publishes Northwind 2.0.0 for approval. It exits non-zero on any mismatch.
 
 Output from this repository's Compose stack (`deterministic` provider; abbreviated at the top):
 
@@ -93,13 +93,40 @@ Privacy: bluefin admin reading northwind -> HTTP 403 cross_tenant_denied; northw
    query.validation:succeeded               6
    SSN values present in the audit trail: 0 of 150 (none: payloads carry ids, hashes, counts and column names only)
 
+
+=== Saved analytics: saved queries, schedules, ML analyses and delivery ===
+Loaded 1483 more claims over 2026-04-04..2026-09-30 (weekly pattern; one unusual day planted on 2026-08-31).
+
+1. "Daily paid claim amounts, claim counts and average payment for the last 180 days."
+   -> deterministic provider proposal 0fba7206 (validated=true), saved as "Daily paid claims" v1; output day:date, paid:decimal, claims:integer, avg_paid:decimal
+2. Ran it: 161 days in 4 ms; 2026-08-31 paid 25248.23 vs independent SQL 25248.23 match
+3. Schedule "Daily 06:00 New York": Daily at 06:00 (America/New_York), runs as northwind-reporter (reporter), next 2026-11-02T11:00:00.000Z; across the 1 Nov DST change: 2026-10-31T10:00:00.000Z, 2026-11-01T11:00:00.000Z, 2026-11-02T11:00:00.000Z
+4. Version 2: parameters :start date = 2026-04-04, :end date = 2026-09-30; analyses daily-anomalies (anomaly.rolling_mad), daily-forecast (forecast.auto)
+5. Run 4ea9675c: succeeded (query succeeded, analyses succeeded, delivery delivered); query 100 ms, analyses 181 ms
+   [high] paid for 2026-04-26 is above its expected range (272.9% above the baseline)
+          Observed 4,664.97 against an expected 1,251.04 from the median of the previous 8 same-phase observations (period 7); expected range 750.93 to 1,751.15. Robust z-score 23.89 (threshold 3.5). Method: anomaly.rolling_mad v1.0.0. This is a statistical deviation; i…
+   [high] paid for 2026-04-25 is above its expected range (185.3% above the baseline)
+          Observed 3,441.51 against an expected 1,206.34 from the median of the previous 8 same-phase observations (period 7); expected range 734.49 to 1,678.19. Robust z-score 16.58 (threshold 3.5). Method: anomaly.rolling_mad v1.0.0. This is a statistical deviation; i…
+   [high] paid for 2026-08-31 is above its expected range (119% above the baseline)
+          Observed 25,248.23 against an expected 11,529.76 from the median of the previous 8 same-phase observations (period 7); expected range 5,741.16 to 17,318.36. Robust z-score 8.3 (threshold 3.5). Method: anomaly.rolling_mad v1.0.0. This is a statistical deviation…
+   [high] paid for 2026-05-02 is above its expected range (121.1% above the baseline)
+          Observed 2,685.73 against an expected 1,214.97 from the median of the previous 8 same-phase observations (period 7); expected range 590.42 to 1,839.51. Robust z-score 8.24 (threshold 3.5). Method: anomaly.rolling_mad v1.0.0. This is a statistical deviation; it…
+   planted anomaly on 2026-08-31 detected: yes
+6. Deliveries: Analyst inbox (in_app) delivered; Finance email (email) delivered
+   in-app for the analyst: [anomaly] Daily paid claims: anomaly detected
+7. Audit trail for the run: schedule.run_now:succeeded -> query.execution.requested:allowed -> query.execution:succeeded -> analysis.run:succeeded -> run.finish:succeeded -> delivery.attempt:succeeded
+8. Schedule of token "analyst-demo": ran (succeeded); token revoked; next run denied (authorization: identity_revoked), query executed: no, deliveries: failed (no_recipients)
+   schedule attention: The execution identity "analyst-demo" no longer has an active token. Someone with schedule:manage must recreate the schedule under an active identity.
+
 Native client: npm run native:run -- --url http://localhost:8080  (sign in with cl_dev_northwind_operator, cl_dev_northwind_reporter, cl_dev_northwind_steward or cl_dev_northwind_admin).
 Result: every metric and every checked query result matches ground truth.
 ```
 
+In step 5 the planted day (2026-08-31) is found; the other high findings in late April are real deviations in the combined data — the reference dataset's own claims fall on days where the analytics dataset's baseline is low. They are listed because they are statistically unusual, not because they are errors.
+
 ## Native client screenshots
 
-Written by `npm run test:e2e` to `test-results/native/` from the real window (Xvfb, 1440×920) while it runs Scenario J (native) and Scenario O:
+Written by `npm run test:e2e` to `test-results/native/` from the real window (Xvfb, 1440×920) while it runs Scenario J (native), Scenario O and Scenario U:
 
 | File | What it shows |
 |---|---|
@@ -115,6 +142,14 @@ Written by `npm run test:e2e` to `test-results/native/` from the real window (Xv
 | `10-records-claims-operator.png`, `11-lineage-operator.png` | The same redaction in record view and lineage (canonical and raw source values) |
 | `12-history-steward.png`, `13-history-steward-dark.png` | Everyone's query history for the steward, re-validated for the viewer, entries flagged where the policy has changed since; dark theme |
 | `14-large-result-reporter.png` | A 5,000-row result in the virtualized grid |
+| `15-destinations-admin.png` | Delivery destinations: an in-app inbox created and test-delivered; a webhook to a private address refused |
+| `16-library-sql-versions-reporter.png` | The saved query in the library, SQL tab: version 2 with typed `:start`/`:end` parameters |
+| `17-analysis-builder-reporter.png` | Analysis builder: anomaly detection on daily paid amounts, validated by the server, saved as version 3 |
+| `18-schedule-editor-reporter.png` | Schedule editor: daily 06:00 America/New_York, run as the reporter, next occurrences across the DST change |
+| `19-run-insights-reporter.png` | A run executed by the scheduler: phase outcomes, timings and evidence-backed insights |
+| `20-run-chart-reporter.png` | The same run: observed series, expected band and anomaly markers; delivery; bounded result |
+| `21-notifications-reporter.png` | The anomaly notification in the reporter's inbox (opening it opens the run) |
+| `22-run-history-reporter.png` | Run history with query, analysis and delivery outcomes |
 
 [`query-workspace.png`](query-workspace.png) (used in the top-level README) is a copy of `04`.
 

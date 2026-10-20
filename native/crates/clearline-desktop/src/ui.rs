@@ -149,7 +149,7 @@ pub fn chip(id: impl Into<SharedString>, label: impl Into<SharedString>, on: boo
 
 /// Severity of an insight or notification as a status signal.
 pub fn severity(s: &str, cx: &App) -> Div {
-    match s { "high" => signal(Tone::Bad, "high", cx), "medium" => signal(Tone::Warn, "medium", cx), "low" => signal(Tone::Warn, "low", cx), _ => signal(Tone::Idle, "info", cx) }
+    match s { "high" => signal(Tone::Bad, "high", cx), "medium" => signal(Tone::Warn, "medium", cx), "low" => signal(Tone::Warn, "low", cx), _ => tag("info", cx) }
 }
 
 /// Run / phase status as a status signal.

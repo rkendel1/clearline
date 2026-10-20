@@ -2,32 +2,51 @@
 > clearline@0.1.0 test:scenarios
 > node -e "require('fs').mkdirSync('test-results',{recursive:true});require('fs').rmSync('test-results/evidence.md',{force:true})" && node --import tsx --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=test-results/scenarios.junit.xml test/scenarios/*.test.ts
 
-✔ Scenario A: valid batch flows from source row to metric and extract (1190.842389ms)
-✔ Scenario B: two tenants, two canonical models, one codebase (1458.705678ms)
-✔ Scenario C: duplicate submissions have no duplicate business effects (1210.075489ms)
-✔ Scenario D: invalid records are quarantined with actionable errors and excluded from metrics (892.87623ms)
-✔ Scenario E: corrections supersede, late versions become history, conflicts are quarantined (1319.869981ms)
-✔ Scenario F1: worker killed mid-transaction recovers safely after restart (5938.443172ms)
-✔ Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly (3930.106072ms)
-✔ Scenario G: cross-tenant and sensitive-export attempts are denied and audited (1027.294868ms)
-{"ts":"2026-10-20T00:46:47.567Z","level":"error","msg":"batch failed","service":"clearline-worker","worker_id":"vm-2306-e5809091","batch_id":"84cba630-967a-4626-9906-c87455f7aff9","tenant":"northwind","attempt":1,"correlation_id":"0cc096e6-b5c7-4759-8048-f6bd26813644","error":{"name":"ContractSupersededError","message":"batch was submitted under contract 2.1.0, but breaking migration(s) 6 have since been applied (active 3.0.0); replay re-processes it under 3.0.0"}}
-✔ Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely (2487.010044ms)
-✔ Scenario I: discrepancies are detected, explained, and removed from trusted outputs (1787.806215ms)
-✔ Scenario J: reports, SQL views and extracts agree with independent queries and ground truth (1720.459098ms)
-✔ Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL (1877.972462ms)
-✔ Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed (245.232828ms)
-✔ Scenario L: a restricted field cannot be obtained by a role that may not see it (2242.941864ms)
-✔ Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail (2765.358227ms)
-✔ Scenario N1: cross-tenant access through generated and edited SQL is rejected (2055.865615ms)
-✔ Scenario N2: the database enforces isolation even if the validator were bypassed (35.122279ms)
-✔ Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions (359.046614ms)
-✔ Scenario N4: error messages, query history and exports disclose nothing (293.137311ms)
-✔ Scenario N5: runaway and unsafe queries fail closed (timeout, cancellation, concurrency, limits) (3432.937739ms)
-ℹ tests 20
+✔ Scenario A: valid batch flows from source row to metric and extract (1375.043716ms)
+✔ Scenario B: two tenants, two canonical models, one codebase (4770.547741ms)
+✔ Scenario C: duplicate submissions have no duplicate business effects (1107.931804ms)
+✔ Scenario D: invalid records are quarantined with actionable errors and excluded from metrics (924.994272ms)
+✔ Scenario E: corrections supersede, late versions become history, conflicts are quarantined (1508.026119ms)
+✔ Scenario F1: worker killed mid-transaction recovers safely after restart (8005.915073ms)
+✔ Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly (6036.564244ms)
+✔ Scenario G: cross-tenant and sensitive-export attempts are denied and audited (932.132898ms)
+{"ts":"2026-10-20T02:25:48.979Z","level":"error","msg":"batch failed","service":"clearline-worker","worker_id":"vm-2674-3d14ee30","batch_id":"1537d309-1f53-4c23-97a3-d9a844a3a818","tenant":"northwind","attempt":1,"correlation_id":"1dac2c0e-7b29-4f0c-ac7b-7bc98a55ad41","error":{"name":"ContractSupersededError","message":"batch was submitted under contract 2.1.0, but breaking migration(s) 6 have since been applied (active 3.0.0); replay re-processes it under 3.0.0"}}
+✔ Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely (2501.077599ms)
+✔ Scenario I: discrepancies are detected, explained, and removed from trusted outputs (1566.850037ms)
+✔ Scenario J: reports, SQL views and extracts agree with independent queries and ground truth (1525.181742ms)
+✔ Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL (1767.74437ms)
+✔ Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed (142.59802ms)
+✔ Scenario L: a restricted field cannot be obtained by a role that may not see it (2093.287753ms)
+✔ Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail (2281.335739ms)
+✔ Scenario N1: cross-tenant access through generated and edited SQL is rejected (1713.748978ms)
+✔ Scenario N2: the database enforces isolation even if the validator were bypassed (29.23159ms)
+✔ Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions (246.966977ms)
+✔ Scenario N4: error messages, query history and exports disclose nothing (230.899014ms)
+✔ Scenario N5: runaway and unsafe queries fail closed (timeout, cancellation, concurrency, limits) (3431.531311ms)
+✔ Scenario P: create, parameterize, execute, version, duplicate, share and archive a saved query (2066.080462ms)
+✔ Scenario Q1: a daily schedule runs at its due time, exactly once per occurrence, also when schedulers race (1650.959064ms)
+✔ Scenario Q2: an interrupted run is recovered by another scheduler and completes; missed occurrences do not burst (252.722949ms)
+✔ Scenario Q3: pause, resume and cancel; time zones and daylight saving are explicit (152.276104ms)
+✔ Scenario Q4: lost authorization blocks the next run; a failed query is never reported as delivered (660.378825ms)
+✔ Scenario Q5: the scheduler runs in the worker process without any client, and survives a restart (3206.527935ms)
+✔ Scenario R1: one run delivered to in-app, email (with CSV), a signed webhook (after transient failures) and an export (1690.494763ms)
+✔ Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query (1089.571833ms)
+✔ Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered (370.979503ms)
+✔ Scenario R4: test deliveries report exactly what happened (32.955043ms)
+✔ Scenario R5: a worker that dies while sending: the delivery is recovered after its lease, sent once, and audited (126.598605ms)
+✔ Scenario S1: time-series anomaly detection finds the planted spike, with computed, grounded evidence (1618.686279ms)
+✔ Scenario S2: weekly forecast evaluated on held-out weeks it never saw, with rolling-origin backtest metrics (119.290793ms)
+✔ Scenario S3: outlier detection ranks the seeded claims first, compared within their procedure (405.932427ms)
+✔ Scenario S4: sensitive or redacted fields cannot enter an analysis; insufficient data is explicit (340.118951ms)
+✔ Scenario S5: model-written summaries are checked against computed evidence and never replace it (211.939956ms)
+✔ Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed (1735.657237ms)
+✔ Scenario T2: webhook destinations cannot target private, loopback, link-local or credentialed endpoints (25.353328ms)
+✔ Scenario T3: tenants cannot see each other's saved queries, schedules, runs, notifications or exports (49.053809ms)
+ℹ tests 39
 ℹ suites 0
-ℹ pass 20
+ℹ pass 39
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0
 ℹ todo 0
-ℹ duration_ms 57995.386808
+ℹ duration_ms 94690.002389
