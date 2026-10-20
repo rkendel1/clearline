@@ -6,6 +6,11 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { can, ROLE_PERMISSIONS, type Permission, type Principal } from '../control/auth.js';
 import { cancel as cancelQuery, execute as executeQuery, exportCsv as exportQuery, getCatalog, getProposal, history as queryHistory, propose } from '../query/service.js';
 import { changeFieldPolicy, fieldPolicyHistory, listFieldPolicies } from '../policy/service.js';
+import { createSavedQuery, duplicateSavedQuery, executeSaved, getSavedQuery, getVersion, listSavedQueries, newVersion, setFavorite, setStatus, updateMetadata, validateAnalysis } from '../analytics/saved.js';
+import { createSchedule, getSchedule, listSchedules, previewRecurrence, runSavedNow, runScheduleNow, setScheduleState, updateSchedule } from '../analytics/schedules.js';
+import { cancelRun, getRun, getRunResult, listRuns, rerun, retryRunDeliveries, reviewAnalysis } from '../analytics/runs.js';
+import { createDestination, listDestinations, testDestination, updateDestination } from '../delivery/destinations.js';
+import { downloadExport, listNotifications, markRead } from '../delivery/inbox.js';
 import { contractForViewer, loadPolicies, type FieldViewer } from '../policy/fields.js';
 import type { Tx } from '../platform/db.js';
 
@@ -231,11 +236,12 @@ route('GET', '/api/v1/tenants/:tenant/extracts/:id/csv', 'extract:run', 'Run an 
 });
 
 // ---- governance
-route('GET', '/api/v1/tenants/:tenant/audit', 'audit:read', 'Audit trail (append-only). Query: action?, limit?.', async (r) => {
+route('GET', '/api/v1/tenants/:tenant/audit', 'audit:read', 'Audit trail (append-only). Query: action? (prefix), correlation_id? (e.g. a run id: every event of that run), limit?.', async (r) => {
   const q = query(r);
   // audit_events is not RLS-protected (it must accept writes before a tenant is known), so filter explicitly.
   return withTenant(T(r), async (tx) => (await tx.query(`SELECT id, at, actor, role, action, resource, outcome, details, correlation_id FROM core.audit_events
-      WHERE tenant_id = $1 AND ($2::text IS NULL OR action LIKE $2 || '%') ORDER BY id DESC LIMIT $3`, [T(r), q.action ?? null, int(q.limit, 200, 5000)])).rows);
+      WHERE tenant_id = $1 AND ($2::text IS NULL OR action LIKE $2 || '%') AND ($4::text IS NULL OR correlation_id = $4) ORDER BY id DESC LIMIT $3`,
+    [T(r), q.action ?? null, int(q.limit, 200, 5000), q.correlation_id ?? null])).rows);
 });
 route('POST', '/api/v1/tenants/:tenant/retention/run', 'retention:run', 'Apply the tenant retention policy now.', async (r, _rep, p) => runRetention(p, T(r)));
 route('POST', '/api/v1/tenants/:tenant/subjects/:entity/:key/erase', 'subject:erase', 'Erase one subject (all versions, raw payloads, quarantine) and log affected exports.', async (r, _rep, p) =>
@@ -271,5 +277,82 @@ route('POST', '/api/v1/tenants/:tenant/fields/:entity/:field/policy', 'policy:ma
   changeFieldPolicy(p, params(r).entity, params(r).field, body(r)));
 route('GET', '/api/v1/tenants/:tenant/fields/policies/history', 'policy:read', 'Append-only version history of field policy changes. Query: entity?, field?, limit?.', async (r, _rep, p) =>
   fieldPolicyHistory(p, { entity: query(r).entity, field: query(r).field, limit: int(query(r).limit, 200, 2000) }));
+
+// ---- saved analytics: saved queries, schedules, runs, analyses, delivery (docs/saved-analytics.md)
+const SQ = '/api/v1/tenants/:tenant/saved-queries';
+const AN = '/api/v1/tenants/:tenant/analytics';
+const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : null);
+route('GET', SQ, 'saved_query:read', 'Saved queries you own or that are shared with the tenant. Query: q?, scope=all|mine|shared, tag?, category?, status?, favorite?, sort=updated|recent|name|created|last_run, limit?, offset?.', async (r, _rep, p) => {
+  const x = query(r);
+  return listSavedQueries(p, { scope: x.scope, q: x.q, tag: x.tag, category: x.category, status: x.status, favorite: bool(x.favorite), sort: x.sort, limit: int(x.limit, 50, 500), offset: int(x.offset, 0, 100_000) });
+});
+route('POST', SQ, 'saved_query:write', 'Save a query: {name, sql | proposal_id, question?, description?, purpose?, category?, business_owner?, tags?, sharing?, parameters?, analyses?, change_note?}. The SQL is validated for your role; saving grants nothing.', async (r, rep, p) => {
+  rep.code(201);
+  return createSavedQuery(p, body(r));
+});
+route('GET', `${SQ}/:id`, 'saved_query:read', 'Saved query detail: metadata, current version (SQL withheld if your role may not use it), versions, schedules, recent runs, latest analyses.', async (r, _rep, p) => getSavedQuery(p, params(r).id));
+route('POST', `${SQ}/:id`, 'saved_query:write', 'Update metadata (name, description, purpose, category, business_owner, tags, sharing). Changing SQL, parameters or analyses creates a version instead.', async (r, _rep, p) => updateMetadata(p, params(r).id, body(r)));
+route('POST', `${SQ}/:id/versions`, 'saved_query:write', 'Create a new version: {sql?, parameters?, analyses?, change_note?}. Analyses that no longer fit the output are flagged needs_revalidation.', async (r, rep, p) => {
+  rep.code(201);
+  return newVersion(p, params(r).id, body(r));
+});
+route('GET', `${SQ}/:id/versions/:version`, 'saved_query:read', 'One immutable version of a saved query.', async (r, _rep, p) => getVersion(p, params(r).id, int(params(r).version, 1, 1_000_000)));
+route('POST', `${SQ}/:id/duplicate`, 'saved_query:write', 'Duplicate into a new private saved query you own: {name?}. Re-validated for your role.', async (r, rep, p) => {
+  rep.code(201);
+  return duplicateSavedQuery(p, params(r).id, body(r));
+});
+route('POST', `${SQ}/:id/status`, 'saved_query:write', 'Set status: {status: active|disabled|archived}. Disabling or archiving pauses its schedules.', async (r, _rep, p) => setStatus(p, params(r).id, String(body(r).status ?? '') as never));
+route('POST', `${SQ}/:id/favorite`, 'saved_query:read', 'Mark or unmark as a favorite: {favorite: true|false}.', async (r, _rep, p) => setFavorite(p, params(r).id, body(r).favorite !== false));
+route('POST', `${SQ}/:id/execute`, 'query:run', 'Run the saved query now as yourself (your role, current policy): {parameters?, mode: preview|run, version?, execution_id?}. Returns rows; nothing is stored, no analyses or deliveries.', async (r, _rep, p) => executeSaved(p, params(r).id, body(r)));
+route('POST', `${SQ}/:id/runs`, 'analysis:run', 'Queue a manual analytics run as yourself: {parameters?, version?, destination_ids?}. The scheduler executes it (query, analyses, deliveries).', async (r, rep, p) => {
+  rep.code(202);
+  return runSavedNow(p, params(r).id, body(r));
+});
+route('POST', `${SQ}/:id/analyses/validate`, 'analysis:read', 'Check an analysis configuration against the current output schema: {config}. Returns the normalized configuration or issues.', async (r, _rep, p) => validateAnalysis(p, params(r).id, body(r)));
+
+route('GET', `${AN}/schedules`, 'saved_query:read', 'Schedules of saved queries visible to you. Query: query_id?, status?.', async (r, _rep, p) => listSchedules(p, { query_id: query(r).query_id, status: query(r).status }));
+route('POST', `${AN}/schedules`, 'schedule:manage', 'Create a schedule: {query_id, recurrence {frequency, interval?, at?, weekdays?, month_day?} | rrule, start_local, timezone, until_local?, parameters?, run_as_role, destination_ids?, pinned_version?, max_attempts?}. It runs as you, with the role you name.', async (r, rep, p) => {
+  rep.code(201);
+  return createSchedule(p, body(r));
+});
+route('POST', `${AN}/schedules/preview`, 'schedule:manage', 'Preview a recurrence: {recurrence | rrule, start_local, timezone, until_local?, count?} -> RRULE, description and the next occurrences (UTC).', async (r) => previewRecurrence(body(r)));
+route('GET', `${AN}/schedules/:id`, 'saved_query:read', 'Schedule detail with recent runs and upcoming occurrences.', async (r, _rep, p) => getSchedule(p, params(r).id));
+route('POST', `${AN}/schedules/:id`, 'schedule:manage', 'Change a schedule (same fields as create). It is re-bound to your identity.', async (r, _rep, p) => updateSchedule(p, params(r).id, body(r)));
+for (const action of ['pause', 'resume', 'cancel'] as const) {
+  route('POST', `${AN}/schedules/:id/${action}`, 'schedule:manage', `${action[0].toUpperCase()}${action.slice(1)} a schedule${action === 'resume' ? ' (from its next future occurrence)' : action === 'cancel' ? ' (final; queued runs are cancelled)' : ''}.`, async (r, _rep, p) => setScheduleState(p, params(r).id, action));
+}
+route('POST', `${AN}/schedules/:id/run`, 'schedule:manage', 'Run a schedule now (manual run under the schedule\'s identity and destinations).', async (r, rep, p) => {
+  rep.code(202);
+  return runScheduleNow(p, params(r).id);
+});
+
+route('GET', `${AN}/runs`, 'saved_query:read', 'Run history. Query: query_id?, schedule_id?, status?, limit?.', async (r, _rep, p) => listRuns(p, { query_id: query(r).query_id, schedule_id: query(r).schedule_id, status: query(r).status, limit: int(query(r).limit, 50, 500) }));
+route('GET', `${AN}/runs/:id`, 'saved_query:read', 'Run detail: phases, timings, analyses, insights and deliveries, re-authorized for your role (data withheld or re-masked where your access is narrower).', async (r, _rep, p) => getRun(p, params(r).id));
+route('GET', `${AN}/runs/:id/result`, 'analysis:read', 'A page of the run\'s bounded result snapshot, re-masked for your role. Query: offset?, limit? (max 1000).', async (r, _rep, p) => getRunResult(p, params(r).id, int(query(r).offset, 0, 1_000_000), Math.max(1, int(query(r).limit, 200, 1000))));
+route('POST', `${AN}/runs/:id/retry-deliveries`, 'schedule:manage', 'Retry failed or blocked deliveries of a run without re-running the query: {delivery_ids?}.', async (r, _rep, p) => retryRunDeliveries(p, params(r).id, strs(body(r).delivery_ids)));
+route('POST', `${AN}/runs/:id/rerun`, 'analysis:run', 'Queue a new run with the same version and parameters.', async (r, rep, p) => {
+  rep.code(202);
+  return rerun(p, params(r).id);
+});
+route('POST', `${AN}/runs/:id/cancel`, 'analysis:run', 'Cancel a run that has not started.', async (r, _rep, p) => cancelRun(p, params(r).id));
+route('POST', `${AN}/analyses/:id/review`, 'analysis:run', 'Name reviewed clusters: {cluster_names: {"1": "High volume", ...}}. Until reviewed, clusters are unnamed.', async (r, _rep, p) => reviewAnalysis(p, params(r).id, body(r)));
+
+route('GET', `${AN}/destinations`, 'schedule:manage', 'Delivery destinations of the tenant (secrets are references; only their presence is shown).', async (_r, _rep, p) => listDestinations(p));
+route('POST', `${AN}/destinations`, 'delivery:manage', 'Create a destination: {name, kind: in_app|email|webhook|export, config, content?: summary|summary_with_csv, notify_on?: always|success|failure|anomaly, enabled?, max_attempts?}.', async (r, rep, p) => {
+  rep.code(201);
+  return createDestination(p, body(r));
+});
+route('POST', `${AN}/destinations/:id`, 'delivery:manage', 'Change a destination (same fields as create; kind cannot change).', async (r, _rep, p) => updateDestination(p, params(r).id, body(r)));
+route('POST', `${AN}/destinations/:id/test`, 'delivery:manage', 'Send a test message (no query data) and report the outcome.', async (r, _rep, p) => testDestination(p, params(r).id));
+route('GET', `${AN}/exports/:id/download`, 'query:export', 'Download an exported CSV (expiring; re-authorized for your role; audited).', async (r, rep, p) => {
+  const f = await downloadExport(p, params(r).id);
+  rep.header('content-type', 'text/csv; charset=utf-8');
+  rep.header('content-disposition', `attachment; filename="${f.file_name}"`);
+  rep.header('x-clearline-sha256', f.sha256);
+  return f.content;
+});
+
+route('GET', '/api/v1/tenants/:tenant/notifications', 'notification:read', 'Your in-app notifications (newest first). Query: unread?, limit?.', async (r, _rep, p) => listNotifications(p, { unread: bool(query(r).unread), limit: int(query(r).limit, 50, 500) }));
+route('POST', '/api/v1/tenants/:tenant/notifications/:id/read', 'notification:read', 'Mark a notification read (id "all" marks every one).', async (r, _rep, p) => markRead(p, params(r).id));
 
 export const ROUTES: readonly RouteDef[] = R;

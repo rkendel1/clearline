@@ -128,7 +128,7 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/audit` | admin, steward | Audit trail (append-only). Query: action?, limit?. |
+| GET | `/api/v1/tenants/:tenant/audit` | admin, steward | Audit trail (append-only). Query: action? (prefix), correlation_id? (e.g. a run id: every event of that run), limit?. |
 
 ## Retention
 
@@ -161,6 +161,56 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 | GET | `/api/v1/tenants/:tenant/fields/policies` | admin, steward, operator | Field policies (sensitivity, redaction, unmask roles, role access) with the effective access of every role. |
 | POST | `/api/v1/tenants/:tenant/fields/:entity/:field/policy` | admin, steward | Change one field policy (field "*" = table). Body: {sensitive?, redaction?, reason?, unmask_roles?, role_access?}. Widening requires policy:grant. |
 | GET | `/api/v1/tenants/:tenant/fields/policies/history` | admin, steward, operator | Append-only version history of field policy changes. Query: entity?, field?, limit?. |
+
+## Saved-queries
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/api/v1/tenants/:tenant/saved-queries` | admin, steward, operator, reporter | Saved queries you own or that are shared with the tenant. Query: q?, scope=all\|mine\|shared, tag?, category?, status?, favorite?, sort=updated\|recent\|name\|created\|last_run, limit?, offset?. |
+| POST | `/api/v1/tenants/:tenant/saved-queries` | admin, steward, operator, reporter | Save a query: {name, sql \| proposal_id, question?, description?, purpose?, category?, business_owner?, tags?, sharing?, parameters?, analyses?, change_note?}. The SQL is validated for your role; saving grants nothing. |
+| GET | `/api/v1/tenants/:tenant/saved-queries/:id` | admin, steward, operator, reporter | Saved query detail: metadata, current version (SQL withheld if your role may not use it), versions, schedules, recent runs, latest analyses. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id` | admin, steward, operator, reporter | Update metadata (name, description, purpose, category, business_owner, tags, sharing). Changing SQL, parameters or analyses creates a version instead. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/versions` | admin, steward, operator, reporter | Create a new version: {sql?, parameters?, analyses?, change_note?}. Analyses that no longer fit the output are flagged needs_revalidation. |
+| GET | `/api/v1/tenants/:tenant/saved-queries/:id/versions/:version` | admin, steward, operator, reporter | One immutable version of a saved query. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/duplicate` | admin, steward, operator, reporter | Duplicate into a new private saved query you own: {name?}. Re-validated for your role. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/status` | admin, steward, operator, reporter | Set status: {status: active\|disabled\|archived}. Disabling or archiving pauses its schedules. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/favorite` | admin, steward, operator, reporter | Mark or unmark as a favorite: {favorite: true\|false}. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/execute` | admin, steward, operator, reporter | Run the saved query now as yourself (your role, current policy): {parameters?, mode: preview\|run, version?, execution_id?}. Returns rows; nothing is stored, no analyses or deliveries. |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/runs` | admin, steward, operator, reporter | Queue a manual analytics run as yourself: {parameters?, version?, destination_ids?}. The scheduler executes it (query, analyses, deliveries). |
+| POST | `/api/v1/tenants/:tenant/saved-queries/:id/analyses/validate` | admin, steward, operator, reporter | Check an analysis configuration against the current output schema: {config}. Returns the normalized configuration or issues. |
+
+## Analytics
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/api/v1/tenants/:tenant/analytics/schedules` | admin, steward, operator, reporter | Schedules of saved queries visible to you. Query: query_id?, status?. |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules` | admin, steward, operator, reporter | Create a schedule: {query_id, recurrence {frequency, interval?, at?, weekdays?, month_day?} \| rrule, start_local, timezone, until_local?, parameters?, run_as_role, destination_ids?, pinned_version?, max_attempts?}. It runs as you, with the role you name. |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules/preview` | admin, steward, operator, reporter | Preview a recurrence: {recurrence \| rrule, start_local, timezone, until_local?, count?} -> RRULE, description and the next occurrences (UTC). |
+| GET | `/api/v1/tenants/:tenant/analytics/schedules/:id` | admin, steward, operator, reporter | Schedule detail with recent runs and upcoming occurrences. |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules/:id` | admin, steward, operator, reporter | Change a schedule (same fields as create). It is re-bound to your identity. |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules/:id/pause` | admin, steward, operator, reporter | Pause a schedule. |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules/:id/resume` | admin, steward, operator, reporter | Resume a schedule (from its next future occurrence). |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules/:id/cancel` | admin, steward, operator, reporter | Cancel a schedule (final; queued runs are cancelled). |
+| POST | `/api/v1/tenants/:tenant/analytics/schedules/:id/run` | admin, steward, operator, reporter | Run a schedule now (manual run under the schedule's identity and destinations). |
+| GET | `/api/v1/tenants/:tenant/analytics/runs` | admin, steward, operator, reporter | Run history. Query: query_id?, schedule_id?, status?, limit?. |
+| GET | `/api/v1/tenants/:tenant/analytics/runs/:id` | admin, steward, operator, reporter | Run detail: phases, timings, analyses, insights and deliveries, re-authorized for your role (data withheld or re-masked where your access is narrower). |
+| GET | `/api/v1/tenants/:tenant/analytics/runs/:id/result` | admin, steward, operator, reporter | A page of the run's bounded result snapshot, re-masked for your role. Query: offset?, limit? (max 1000). |
+| POST | `/api/v1/tenants/:tenant/analytics/runs/:id/retry-deliveries` | admin, steward, operator, reporter | Retry failed or blocked deliveries of a run without re-running the query: {delivery_ids?}. |
+| POST | `/api/v1/tenants/:tenant/analytics/runs/:id/rerun` | admin, steward, operator, reporter | Queue a new run with the same version and parameters. |
+| POST | `/api/v1/tenants/:tenant/analytics/runs/:id/cancel` | admin, steward, operator, reporter | Cancel a run that has not started. |
+| POST | `/api/v1/tenants/:tenant/analytics/analyses/:id/review` | admin, steward, operator, reporter | Name reviewed clusters: {cluster_names: {"1": "High volume", ...}}. Until reviewed, clusters are unnamed. |
+| GET | `/api/v1/tenants/:tenant/analytics/destinations` | admin, steward, operator, reporter | Delivery destinations of the tenant (secrets are references; only their presence is shown). |
+| POST | `/api/v1/tenants/:tenant/analytics/destinations` | admin, steward | Create a destination: {name, kind: in_app\|email\|webhook\|export, config, content?: summary\|summary_with_csv, notify_on?: always\|success\|failure\|anomaly, enabled?, max_attempts?}. |
+| POST | `/api/v1/tenants/:tenant/analytics/destinations/:id` | admin, steward | Change a destination (same fields as create; kind cannot change). |
+| POST | `/api/v1/tenants/:tenant/analytics/destinations/:id/test` | admin, steward | Send a test message (no query data) and report the outcome. |
+| GET | `/api/v1/tenants/:tenant/analytics/exports/:id/download` | admin, steward, operator, reporter | Download an exported CSV (expiring; re-authorized for your role; audited). |
+
+## Notifications
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/api/v1/tenants/:tenant/notifications` | admin, steward, operator, reporter | Your in-app notifications (newest first). Query: unread?, limit?. |
+| POST | `/api/v1/tenants/:tenant/notifications/:id/read` | admin, steward, operator, reporter | Mark a notification read (id "all" marks every one). |
 
 ## Examples
 
