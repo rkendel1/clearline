@@ -51,3 +51,26 @@ test('change classification: anything that is not strictly narrowing is widening
   assert.equal(k({ role_access: { reporter: 'hidden' }, unmask_roles: ['admin', 'steward'] }, sens), 'mixed');
   assert.equal(k({ reason: 'new wording' }, sens), 'none');
 });
+
+test('the query login must differ from the service login, and production needs it configured', async () => {
+  const { loadConfig, resetConfigForTests } = await import('../../src/platform/config.js');
+  const saved = { ...process.env };
+  try {
+    process.env.DATABASE_URL = 'postgres://clearline:pw@db:5432/clearline';
+    process.env.QUERY_DATABASE_URL = 'postgres://clearline:pw@db:5432/clearline';
+    resetConfigForTests();
+    assert.throws(() => loadConfig(), /other than the service login/);
+    delete process.env.QUERY_DATABASE_URL;
+    process.env.NODE_ENV = 'production';
+    delete process.env.QUERY_DB_PASSWORD;
+    resetConfigForTests();
+    assert.throws(() => loadConfig(), /QUERY_DATABASE_URL or QUERY_DB_PASSWORD is required/);
+    process.env.QUERY_DB_PASSWORD = 'secret';
+    resetConfigForTests();
+    assert.equal(loadConfig().queryLoginRole, 'clearline_query');
+  } finally {
+    for (const k of Object.keys(process.env)) if (!(k in saved)) delete process.env[k];
+    Object.assign(process.env, saved);
+    resetConfigForTests();
+  }
+});

@@ -101,6 +101,8 @@ export function loadConfig(): Config {
     cfg.queryDatabaseUrl = u.toString();
   }
   cfg.queryLoginRole = decodeURIComponent(new URL(cfg.queryDatabaseUrl).username);
+  // On the service login, RESET ROLE inside a query would regain the service's privileges.
+  if (cfg.queryLoginRole === decodeURIComponent(new URL(cfg.databaseUrl).username)) throw new Error('QUERY_DATABASE_URL must use a login other than the service login (DATABASE_URL)');
   cached = cfg;
   return cfg;
 }
