@@ -210,7 +210,9 @@ export interface ExecuteResult {
 const PG_TYPES: Record<number, string> = { 16: 'boolean', 20: 'integer', 21: 'integer', 23: 'integer', 25: 'string', 700: 'decimal', 701: 'decimal', 1043: 'string', 1082: 'date',
   1114: 'timestamp', 1184: 'timestamp', 1186: 'interval', 1700: 'decimal', 2950: 'uuid' };
 
-export async function execute(p: Principal, proposalId: string, mode: 'preview' | 'run' | 'export'): Promise<ExecuteResult> {
+export async function execute(p: Principal, proposalId: string, mode: 'preview' | 'run' | 'export', clientExecutionId?: string): Promise<ExecuteResult> {
+  // A client may name the execution up front so it can cancel it while it runs.
+  if (clientExecutionId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(clientExecutionId)) throw badRequest('invalid_execution_id', 'execution_id must be a lowercase UUID');
   const tenant = p.tenantId!;
   const cfg = loadConfig();
   if (!['preview', 'run', 'export'].includes(mode)) throw badRequest('invalid_mode', 'mode must be preview, run or export');
@@ -238,11 +240,18 @@ export async function execute(p: Principal, proposalId: string, mode: 'preview' 
   if (n >= cfg.queryMaxConcurrentPerTenant || total >= cfg.queryMaxConcurrent) {
     throw new AppError(429, 'query_concurrency_limit', 'Too many queries are running; wait for one to finish or cancel it.');
   }
+  const id = clientExecutionId ?? randomUUID();
+  if (running.has(id)) throw new AppError(409, 'execution_id_in_use', 'That execution id is already in use.');
   perTenant.set(tenant, n + 1); total++;
-  const id = randomUUID();
   const masked = v.output.filter((o) => o.masked).map((o) => ({ column: o.name, field: `${o.table}.${o.column}`, redaction: o.masked }));
-  await withTenant(tenant, (tx) => tx.query(`INSERT INTO core.query_executions (id, tenant_id, proposal_id, actor, role, mode, executed_sql, executed_sql_sha256, status, masked_columns, policy_epoch, correlation_id)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'running',$9,$10,$11)`, [id, tenant, proposalId, p.actor, p.role, mode, executedSql, sha(executedSql), JSON.stringify(masked), ctx.set.epoch, p.correlationId]));
+  try {
+    await withTenant(tenant, (tx) => tx.query(`INSERT INTO core.query_executions (id, tenant_id, proposal_id, actor, role, mode, executed_sql, executed_sql_sha256, status, masked_columns, policy_epoch, correlation_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'running',$9,$10,$11)`, [id, tenant, proposalId, p.actor, p.role, mode, executedSql, sha(executedSql), JSON.stringify(masked), ctx.set.epoch, p.correlationId]));
+  } catch (err) {
+    perTenant.set(tenant, (perTenant.get(tenant) ?? 1) - 1); total--;
+    if ((err as { code?: string }).code === '23505') throw new AppError(409, 'execution_id_in_use', 'That execution id is already in use.');
+    throw err;
+  }
   const state = { pid: null as number | null, cancelled: false, tenant, actor: p.actor };
   running.set(id, state);
   const started = performance.now();

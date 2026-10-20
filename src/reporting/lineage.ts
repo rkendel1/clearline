@@ -110,6 +110,9 @@ export async function listRecords(tenant: string, entity: string, opts: { limit:
         FROM ${table(tenant, entity)} r JOIN core.batches b ON b.id = r."_batch_id" WHERE r."_is_current" ORDER BY r."_key" LIMIT $1 OFFSET $2`, [opts.limit, opts.offset]);
     const total = (await tx.query(`SELECT count(*)::int AS n FROM ${table(tenant, entity)} WHERE "_is_current"`)).rows[0].n;
     return { entity, total, limit: opts.limit, offset: opts.offset,
-      fields, records: rows.map((r) => ({ ...viewer.record(entity, r), _key: viewer.key(entity, e.key, r._key) })) };
+      fields,
+      // Which returned fields are redacted for this role, and how (the values are already redacted).
+      redacted: Object.fromEntries(fields.filter((f) => viewer.level(entity, f) === 'masked').map((f) => [f, viewer.style(entity, f)])),
+      records: rows.map((r) => ({ ...viewer.record(entity, r), _key: viewer.key(entity, e.key, r._key) })) };
   });
 }

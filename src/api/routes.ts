@@ -248,10 +248,11 @@ route('POST', '/api/v1/tenants/:tenant/queries/proposals', 'query:propose', 'Cre
   return propose(p, body(r));
 });
 route('GET', '/api/v1/tenants/:tenant/queries/proposals/:id', 'query:history', 'One proposal with its validation and executions (re-evaluated against your current access).', async (r, _rep, p) => getProposal(p, params(r).id));
-route('POST', '/api/v1/tenants/:tenant/queries/proposals/:id/execute', 'query:run', 'Run a proposal after re-validating it under the current policy. Body: {mode: preview|run}. Returns permitted, redacted rows; rows are not stored.', async (r, _rep, p) => {
+route('POST', '/api/v1/tenants/:tenant/queries/proposals/:id/execute', 'query:run', 'Run a proposal after re-validating it under the current policy. Body: {mode: preview|run, execution_id?: uuid (lets the client cancel it while it runs)}. Returns permitted, redacted rows; rows are not stored.', async (r, _rep, p) => {
   const mode = String(body(r).mode ?? 'preview');
   if (mode !== 'preview' && mode !== 'run') throw badRequest('invalid_mode', 'mode must be preview or run');
-  return executeQuery(p, params(r).id, mode);
+  const eid = body(r).execution_id;
+  return executeQuery(p, params(r).id, mode, typeof eid === 'string' ? eid : undefined);
 });
 route('POST', '/api/v1/tenants/:tenant/queries/proposals/:id/export', 'query:export', 'Run a proposal and return CSV (same validation and redaction as execute).', async (r, rep, p) => {
   const { csv, meta } = await exportQuery(p, params(r).id);

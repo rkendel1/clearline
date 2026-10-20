@@ -111,6 +111,25 @@ export class DeterministicProvider implements SqlProvider {
       };
     }
 
+    // "List members with their ssn and last name": columns named in the question, resolved against the
+    // permitted catalog only. A name the role cannot discover is indistinguishable from a nonexistent one.
+    const withCols = /\b(?:list|show)\s+(?:all\s+|the\s+)?([a-z_ ]+?)\s+with\s+(?:their\s+|the\s+)?(.+?)[.?!]*$/.exec(q);
+    if (withCols) {
+      const t = cat.tables.find((x) => new RegExp(`^${x.name.replace(/_/g, ' ')}s?$`).test(withCols[1].trim()));
+      if (!t) return cannot(NOT_MAPPED);
+      const wanted = withCols[2].split(/,|\band\b/).map((w) => w.trim().replace(/^(their|the)\s+/, '')).filter(Boolean);
+      const names: string[] = [];
+      for (const w of wanted) {
+        const col = t.columns.find((c) => c.name === w.replace(/\s+/g, '_') || c.name.replace(/_/g, ' ') === w);
+        if (!col) return cannot(NOT_MAPPED);
+        names.push(col.name);
+      }
+      const key = t.key[0] ?? full(t)[0];
+      const cols = [...new Set([key, ...names])];
+      return { kind: 'proposal', sql: `SELECT ${cols.join(', ')}\nFROM ${t.name}\nORDER BY ${key}\nLIMIT 100`,
+        explanation: `Lists up to 100 ${t.name} records with ${names.join(', ')}.`, assumptions: [] };
+    }
+
     // Generic: "count <table>" / "list|show <table>".
     for (const t of cat.tables) {
       const name = t.name.replace(/_/g, ' ');

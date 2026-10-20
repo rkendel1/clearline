@@ -5,6 +5,7 @@
 // still only an untrusted proposal.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { log } from '../../platform/logger.js';
 import { ProviderUnavailable, type ProviderRequest, type ProviderResult, type SqlProvider } from './types.js';
 
 const SYSTEM = `You translate analytical questions into a single read-only PostgreSQL SELECT statement for the Clearline data platform.
@@ -33,8 +34,10 @@ export class AnthropicProvider implements SqlProvider {
   readonly id = 'anthropic';
   private client: Anthropic;
 
-  constructor(readonly model: string, opts: { apiKey: string; timeoutMs: number }) {
-    this.client = new Anthropic({ apiKey: opts.apiKey, timeout: opts.timeoutMs, maxRetries: 1 });
+  constructor(readonly model: string, opts: { apiKey: string; timeoutMs: number; workspaceId?: string }) {
+    // Keys not scoped to a workspace must name one (ANTHROPIC_WORKSPACE_ID).
+    this.client = new Anthropic({ apiKey: opts.apiKey, timeout: opts.timeoutMs, maxRetries: 1,
+      defaultHeaders: opts.workspaceId ? { 'anthropic-workspace-id': opts.workspaceId } : undefined });
   }
 
   async generate(req: ProviderRequest, signal?: AbortSignal): Promise<ProviderResult> {
@@ -50,8 +53,10 @@ export class AnthropicProvider implements SqlProvider {
         messages: [{ role: 'user', content: `Today is ${req.today}. Dialect: ${req.dialect}.\n\nCatalog (JSON):\n${JSON.stringify(req.catalog)}\n\nQuestion: ${req.question}` }],
       }, { signal });
     } catch (err) {
+      // The provider's own message helps operators (it never contains the key); users get a generic one.
+      if (err instanceof Anthropic.APIError) log.warn('model provider error', { provider: this.id, status: err.status, message: String(err.message).slice(0, 300) });
       if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) throw new ProviderUnavailable(this.id, 'The model provider rejected the configured credentials.', false);
-      if (err instanceof Anthropic.NotFoundError || err instanceof Anthropic.BadRequestError) throw new ProviderUnavailable(this.id, `The model provider rejected the request (${err.status}); check NL_SQL_MODEL.`, false);
+      if (err instanceof Anthropic.NotFoundError || err instanceof Anthropic.BadRequestError) throw new ProviderUnavailable(this.id, `The model provider rejected the request (${err.status}); check NL_SQL_MODEL, ANTHROPIC_WORKSPACE_ID and the server log.`, false);
       if (err instanceof Anthropic.RateLimitError) throw new ProviderUnavailable(this.id, 'The model provider is rate limiting requests; try again shortly.', true);
       if (err instanceof Anthropic.APIConnectionTimeoutError) throw new ProviderUnavailable(this.id, 'The model provider did not answer in time.', true);
       if (err instanceof Anthropic.APIConnectionError) throw new ProviderUnavailable(this.id, 'The model provider could not be reached.', true);
