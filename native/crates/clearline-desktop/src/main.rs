@@ -8,6 +8,7 @@
 
 mod app;
 mod automation;
+mod chart;
 mod data;
 mod grid;
 mod perf;

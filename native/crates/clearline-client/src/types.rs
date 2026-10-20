@@ -300,3 +300,167 @@ pub struct PolicyPatch {
     #[serde(skip_serializing_if = "Option::is_none")] pub unmask_roles: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")] pub role_access: Option<BTreeMap<String, String>>,
 }
+
+// ------------------------------------------------------------------ saved analytics (docs/saved-analytics.md)
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunBrief { pub id: String, pub status: String, pub at: Option<String>, pub row_count: Option<i64>, pub duration_ms: Option<i64> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct SavedQuerySummary {
+    pub id: String, pub name: String, pub description: Option<String>, pub category: Option<String>, #[serde(default)] pub tags: Vec<String>,
+    pub owner: String, pub mine: bool, pub sharing: String, pub status: String, pub version: i64, pub favorite: bool, pub updated_at: Option<String>,
+    pub needs_revalidation: Option<String>, #[serde(default)] pub analyses: i64, #[serde(default)] pub active_schedules: i64, pub next_run_at: Option<String>,
+    pub last_run: Option<RunBrief>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct SavedQueryList { pub items: Vec<SavedQuerySummary> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct SchemaColumn { pub name: String, #[serde(rename = "type")] pub ty: String, pub masked: Option<String>, #[serde(default)] pub sensitive: bool }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct ParamDecl {
+    pub name: String, #[serde(rename = "type")] pub ty: String, pub label: Option<String>, #[serde(default = "yes")] pub required: bool,
+    #[serde(default)] pub default: Value, #[serde(default)] pub min: Value, #[serde(default)] pub max: Value, #[serde(default)] pub allowed: Vec<Value>,
+}
+fn yes() -> bool { true }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct SavedVersion {
+    pub version: i64, pub sql: Option<String>, pub sql_sha256: String, pub question: Option<String>, pub source_proposal_id: Option<String>,
+    #[serde(default)] pub parameters: Vec<ParamDecl>, pub output_schema: Option<Vec<SchemaColumn>>, #[serde(default)] pub analyses: Vec<Value>,
+    pub change_note: Option<String>, pub created_by: String, pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct VersionBrief { pub version: i64, pub sql_sha256: String, pub change_note: Option<String>, pub created_by: String, pub created_at: Option<String>, #[serde(default)] pub analyses: i64 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct ScheduleBrief {
+    pub id: String, pub name: String, pub status: String, pub rrule: Option<String>, pub start_local: String, pub timezone: String, pub next_run_at: Option<String>,
+    pub attention: Option<String>, pub run_as_actor: String, pub run_as_role: String, pub last_run_id: Option<String>, #[serde(default)] pub description: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunRow {
+    pub id: String, pub trigger: String, pub status: String, pub query_status: String, pub analysis_status: String, pub delivery_status: String,
+    pub failure_class: Option<String>, pub query_version: i64, pub created_at: Option<String>, pub finished_at: Option<String>, #[serde(default)] pub row_count: Value, #[serde(default)] pub timings: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct LatestAnalysis { pub id: String, pub analysis_key: String, pub analysis_type: String, pub algorithm: String, pub algorithm_version: String, pub status: String, pub message: Option<String>, pub created_at: Option<String>, pub run_id: String }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct SavedQueryDetail {
+    pub id: String, pub name: String, pub description: Option<String>, pub purpose: Option<String>, pub category: Option<String>, pub business_owner: Option<String>,
+    #[serde(default)] pub tags: Vec<String>, pub owner: String, pub owner_role: String, pub mine: bool, pub sharing: String, pub status: String, pub favorite: bool,
+    pub created_at: Option<String>, pub updated_at: Option<String>, pub needs_revalidation: Option<String>, pub version: i64, pub executable_now: bool, pub withheld: bool,
+    #[serde(default)] pub issues: Vec<Issue>, pub current: SavedVersion, #[serde(default)] pub versions: Vec<VersionBrief>, #[serde(default)] pub schedules: Vec<ScheduleBrief>,
+    #[serde(default)] pub recent_runs: Vec<RunRow>, #[serde(default)] pub latest_analyses: Vec<LatestAnalysis>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunAs { pub actor: String, pub role: String }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Schedule {
+    pub id: String, pub query_id: String, pub name: String, pub status: String, pub rrule: Option<String>, pub start_local: String, pub timezone: String,
+    pub until_local: Option<String>, pub description: String, #[serde(default)] pub parameters: Value, pub run_as: RunAs, #[serde(default)] pub destination_ids: Vec<String>,
+    pub next_run_at: Option<String>, pub last_run_id: Option<String>, pub attention: Option<String>, pub max_attempts: i64, pub version: i64,
+    #[serde(default)] pub upcoming: Vec<String>, #[serde(default)] pub recent_runs: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct SchedulePreview { pub rrule: Option<String>, pub description: String, pub next: Vec<String> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Queued { pub run_id: String, pub status: String }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunResultMeta { #[serde(default)] pub columns: Vec<SchemaColumn>, pub row_count: Option<i64>, pub truncated: Option<bool>, pub bytes: Option<i64>, pub schema_changed: Option<String> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Run {
+    pub id: String, pub query_id: String, pub query_version: i64, pub schedule_id: Option<String>, pub occurrence_at: Option<String>, pub trigger: String, pub requested_by: String,
+    pub run_as: RunAs, pub status: String, pub query_status: String, pub analysis_status: String, pub delivery_status: String, pub failure_class: Option<String>,
+    pub error_code: Option<String>, pub error_message: Option<String>, pub attempt: i64, pub max_attempts: i64, #[serde(default)] pub missed_occurrences: i64,
+    pub created_at: Option<String>, pub started_at: Option<String>, pub finished_at: Option<String>, #[serde(default)] pub timings: Value, #[serde(default)] pub parameters: Value,
+    pub result: Option<RunResultMeta>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunListItem {
+    #[serde(flatten)] pub run: Run, pub query_name: String, #[serde(default)] pub deliveries: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunList { pub items: Vec<RunListItem> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct AnalysisRun {
+    pub id: String, pub key: String, #[serde(rename = "type")] pub ty: String, pub algorithm: String, pub algorithm_version: String, pub config: Value, pub status: String,
+    pub message: Option<String>, #[serde(default)] pub quality: Value, #[serde(default)] pub result: Value, pub input_rows: Option<i64>, #[serde(default)] pub timings: Value,
+    #[serde(default)] pub review: Value, #[serde(default)] pub withheld: bool,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Narrative { pub provider: String, pub model: Option<String>, pub text: Option<String> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Insight {
+    pub id: String, pub analysis_run_id: Option<String>, pub kind: String, pub severity: String, pub metric: Option<String>, pub title: String, pub body: String,
+    #[serde(default)] pub evidence: Value, pub narrative: Option<Narrative>, pub created_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct DeliveryRow {
+    pub id: String, pub destination_id: String, pub destination: String, pub kind: String, pub status: String, pub attempts: i64, pub max_attempts: i64,
+    pub next_attempt_at: Option<String>, pub last_error_code: Option<String>, pub last_error: Option<String>, pub delivered_at: Option<String>, #[serde(default)] pub attempts_log: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct QueryRef { pub id: String, pub name: String, pub status: String, pub current_version: i64 }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunAccess { pub data: bool, pub reason: Option<String>, #[serde(default)] pub remasked_columns: Vec<String> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunDetail {
+    pub run: Run, pub query: QueryRef, pub access: RunAccess, #[serde(default)] pub analyses: Vec<AnalysisRun>, #[serde(default)] pub insights: Vec<Insight>,
+    #[serde(default)] pub insights_withheld: i64, #[serde(default)] pub deliveries: Vec<DeliveryRow>, #[serde(default)] pub exports: Vec<Value>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct RunResultPage { pub run_id: String, pub columns: Vec<SchemaColumn>, pub rows: Vec<Vec<Value>>, pub offset: i64, pub limit: i64, pub row_count: i64, pub truncated: bool }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Destination {
+    pub id: String, pub name: String, pub kind: String, pub config: Value, pub content: String, pub notify_on: String, pub enabled: bool, pub max_attempts: i64, pub version: i64,
+    #[serde(default)] pub secrets: Value,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Destinations { pub items: Vec<Destination> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct TestDelivery { pub destination_id: String, pub kind: String, pub ok: bool, pub code: Option<String>, pub message: Option<String>, pub status: Option<i64> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Notification {
+    pub id: String, pub kind: String, pub severity: String, pub created_at: Option<String>, pub read_at: Option<String>, pub run_id: Option<String>, pub query_id: Option<String>,
+    pub title: String, pub body: String, #[serde(default)] pub links: Value, pub query_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct Notifications { pub unread: i64, pub items: Vec<Notification> }
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+pub struct AnalysisCheck { pub ok: bool, pub config: Option<Value>, #[serde(default)] pub issues: Vec<Value>, pub output_schema: Option<Vec<SchemaColumn>> }
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct SavedExecution {
+    pub execution_id: String, pub status: String, pub columns: Vec<ResultColumn>, pub rows: Vec<Vec<Value>>, pub row_count: i64, pub truncated: bool, pub duration_ms: i64,
+    pub version: i64, #[serde(default)] pub parameters: Value, pub error: Option<Issue>,
+}

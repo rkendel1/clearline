@@ -1,0 +1,414 @@
+{
+  "generated_at": "2026-10-20T02:11:02.332Z",
+  "environment": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpu_count": 4,
+    "memory_gb": 16.9,
+    "os": "linux 6.18.44-fc-v139",
+    "node": "v22.22.0",
+    "postgres": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)",
+    "database_location": "same host as the application (loopback)"
+  },
+  "dataset": {
+    "claims": 51483,
+    "extra_random_claims": 50000,
+    "iterations": 10,
+    "burst": 40
+  },
+  "configuration": {
+    "SCHEDULER_MAX_CONCURRENT": 2,
+    "SCHEDULER_MAX_PER_TENANT": 2,
+    "ANALYSIS_MAX_ROWS": 5000,
+    "ANALYSIS_MAX_POINTS": 5000,
+    "DELIVERY_MAX_ROWS": 100,
+    "ml_limits_for_in_process_cases": "maxRows/maxPoints raised to 50,000 so the large case exceeds the default caps"
+  },
+  "ml": {
+    "anomaly.rolling_mad": {
+      "small": {
+        "input": "180 points",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 8.57,
+          "p95_ms": 14.05,
+          "max_ms": 14.05
+        },
+        "prepare_p50_ms": 0.49,
+        "algorithm_p50_ms": 7.94
+      },
+      "medium": {
+        "input": "1000 points",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 51.7,
+          "p95_ms": 62.09,
+          "max_ms": 62.09
+        },
+        "prepare_p50_ms": 2.2,
+        "algorithm_p50_ms": 49.2
+      },
+      "large": {
+        "input": "5000 points",
+        "status": "succeeded",
+        "total": {
+          "n": 5,
+          "p50_ms": 214.39,
+          "p95_ms": 233.24,
+          "max_ms": 233.24
+        },
+        "prepare_p50_ms": 9.65,
+        "algorithm_p50_ms": 204.83
+      }
+    },
+    "anomaly.seasonal_decomposition": {
+      "small": {
+        "input": "180 points",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 0.85,
+          "p95_ms": 2.22,
+          "max_ms": 2.22
+        },
+        "prepare_p50_ms": 0.35,
+        "algorithm_p50_ms": 0.51
+      },
+      "medium": {
+        "input": "1000 points",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 5.08,
+          "p95_ms": 5.74,
+          "max_ms": 5.74
+        },
+        "prepare_p50_ms": 1.9,
+        "algorithm_p50_ms": 2.97
+      },
+      "large": {
+        "input": "5000 points",
+        "status": "succeeded",
+        "total": {
+          "n": 5,
+          "p50_ms": 26.03,
+          "p95_ms": 26.55,
+          "max_ms": 26.55
+        },
+        "prepare_p50_ms": 9.52,
+        "algorithm_p50_ms": 15.38
+      }
+    },
+    "forecast.auto": {
+      "small": {
+        "input": "180 points",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 1.45,
+          "p95_ms": 9.79,
+          "max_ms": 9.79
+        },
+        "prepare_p50_ms": 0.41,
+        "algorithm_p50_ms": 1.04
+      },
+      "medium": {
+        "input": "1000 points",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 6.26,
+          "p95_ms": 7.26,
+          "max_ms": 7.26
+        },
+        "prepare_p50_ms": 2.06,
+        "algorithm_p50_ms": 4.27
+      },
+      "large": {
+        "input": "5000 points",
+        "status": "succeeded",
+        "total": {
+          "n": 5,
+          "p50_ms": 31.26,
+          "p95_ms": 32.02,
+          "max_ms": 32.02
+        },
+        "prepare_p50_ms": 9.81,
+        "algorithm_p50_ms": 19.62
+      }
+    },
+    "outlier.robust_distance": {
+      "small": {
+        "input": "500 rows × 3 features",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 3.46,
+          "p95_ms": 13.25,
+          "max_ms": 13.25
+        },
+        "prepare_p50_ms": 0.2,
+        "algorithm_p50_ms": 3.25
+      },
+      "medium": {
+        "input": "5000 rows × 3 features",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 35.38,
+          "p95_ms": 46.68,
+          "max_ms": 46.68
+        },
+        "prepare_p50_ms": 0.79,
+        "algorithm_p50_ms": 34.56
+      },
+      "large": {
+        "input": "20000 rows × 3 features",
+        "status": "succeeded",
+        "total": {
+          "n": 5,
+          "p50_ms": 130.19,
+          "p95_ms": 166.21,
+          "max_ms": 166.21
+        },
+        "prepare_p50_ms": 4.56,
+        "algorithm_p50_ms": 125.28
+      }
+    },
+    "cluster.kmeans": {
+      "small": {
+        "input": "500 rows × 3 features",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 6.69,
+          "p95_ms": 20.73,
+          "max_ms": 20.73
+        },
+        "prepare_p50_ms": 0.1,
+        "algorithm_p50_ms": 6.57
+      },
+      "medium": {
+        "input": "5000 rows × 3 features",
+        "status": "succeeded",
+        "total": {
+          "n": 10,
+          "p50_ms": 52.4,
+          "p95_ms": 64.93,
+          "max_ms": 64.93
+        },
+        "prepare_p50_ms": 0.56,
+        "algorithm_p50_ms": 51.79
+      },
+      "large": {
+        "input": "20000 rows × 3 features",
+        "status": "succeeded",
+        "total": {
+          "n": 5,
+          "p50_ms": 134.46,
+          "p95_ms": 165.49,
+          "max_ms": 165.49
+        },
+        "prepare_p50_ms": 2.3,
+        "algorithm_p50_ms": 131.67
+      }
+    }
+  },
+  "runs": {
+    "small": {
+      "query": "Daily paid (180 days)",
+      "rows": 180,
+      "snapshot_bytes": 5859,
+      "analyses": [
+        "anomaly.rolling_mad",
+        "forecast.auto"
+      ],
+      "insights": 11,
+      "deliveries": [
+        "in_app:delivered",
+        "webhook:delivered",
+        "email:delivered",
+        "export:delivered"
+      ],
+      "phases": {
+        "wall": {
+          "n": 10,
+          "p50_ms": 152.32,
+          "p95_ms": 267.33,
+          "max_ms": 267.33
+        },
+        "queue_wait": {
+          "n": 10,
+          "p50_ms": 14,
+          "p95_ms": 26,
+          "max_ms": 26
+        },
+        "identity": {
+          "n": 10,
+          "p50_ms": 1,
+          "p95_ms": 2,
+          "max_ms": 2
+        },
+        "query": {
+          "n": 10,
+          "p50_ms": 38,
+          "p95_ms": 51,
+          "max_ms": 51
+        },
+        "snapshot": {
+          "n": 10,
+          "p50_ms": 4,
+          "p95_ms": 6,
+          "max_ms": 6
+        },
+        "analyses": {
+          "n": 10,
+          "p50_ms": 21,
+          "p95_ms": 32,
+          "max_ms": 32
+        },
+        "delivery": {
+          "n": 10,
+          "p50_ms": 28,
+          "p95_ms": 77,
+          "max_ms": 77
+        }
+      }
+    },
+    "medium": {
+      "query": "Paid by member (top 2,000)",
+      "rows": 2000,
+      "snapshot_bytes": 77903,
+      "analyses": [
+        "outlier.robust_distance"
+      ],
+      "insights": 1,
+      "deliveries": [
+        "in_app:delivered",
+        "webhook:delivered",
+        "email:delivered",
+        "export:delivered"
+      ],
+      "phases": {
+        "wall": {
+          "n": 10,
+          "p50_ms": 152.53,
+          "p95_ms": 167.07,
+          "max_ms": 167.07
+        },
+        "queue_wait": {
+          "n": 10,
+          "p50_ms": 9,
+          "p95_ms": 16,
+          "max_ms": 16
+        },
+        "identity": {
+          "n": 10,
+          "p50_ms": 0,
+          "p95_ms": 1,
+          "max_ms": 1
+        },
+        "query": {
+          "n": 10,
+          "p50_ms": 49,
+          "p95_ms": 51,
+          "max_ms": 51
+        },
+        "snapshot": {
+          "n": 10,
+          "p50_ms": 7,
+          "p95_ms": 32,
+          "max_ms": 32
+        },
+        "analyses": {
+          "n": 10,
+          "p50_ms": 13,
+          "p95_ms": 16,
+          "max_ms": 16
+        },
+        "delivery": {
+          "n": 10,
+          "p50_ms": 40,
+          "p95_ms": 50,
+          "max_ms": 50
+        }
+      }
+    },
+    "large": {
+      "query": "Claims (5,000 rows)",
+      "rows": 5000,
+      "snapshot_bytes": 178894,
+      "analyses": [
+        "outlier.robust_distance",
+        "cluster.kmeans"
+      ],
+      "insights": 2,
+      "deliveries": [
+        "in_app:delivered",
+        "webhook:delivered",
+        "email:delivered",
+        "export:delivered"
+      ],
+      "phases": {
+        "wall": {
+          "n": 10,
+          "p50_ms": 322.28,
+          "p95_ms": 363.38,
+          "max_ms": 363.38
+        },
+        "queue_wait": {
+          "n": 10,
+          "p50_ms": 9,
+          "p95_ms": 10,
+          "max_ms": 10
+        },
+        "identity": {
+          "n": 10,
+          "p50_ms": 0,
+          "p95_ms": 1,
+          "max_ms": 1
+        },
+        "query": {
+          "n": 10,
+          "p50_ms": 43,
+          "p95_ms": 45,
+          "max_ms": 45
+        },
+        "snapshot": {
+          "n": 10,
+          "p50_ms": 13,
+          "p95_ms": 14,
+          "max_ms": 14
+        },
+        "analyses": {
+          "n": 10,
+          "p50_ms": 151,
+          "p95_ms": 195,
+          "max_ms": 195
+        },
+        "delivery": {
+          "n": 10,
+          "p50_ms": 56,
+          "p95_ms": 64,
+          "max_ms": 64
+        }
+      }
+    }
+  },
+  "webhook": {
+    "received": 30,
+    "signature_valid": 30
+  },
+  "throughput": {
+    "runs": 40,
+    "enqueue_ms": 204,
+    "drain_ms": 2860,
+    "runs_per_s": 14,
+    "ticks": 2,
+    "largest_tick_runs": 40,
+    "outcome": {
+      "succeeded": 40
+    }
+  }
+}

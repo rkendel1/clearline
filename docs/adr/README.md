@@ -15,3 +15,6 @@
 | [0011](0011-governed-natural-language-sql.md) | Natural-language SQL as an untrusted proposal behind a structural validator and a database boundary | Accepted |
 | [0012](0012-field-policy-model.md) | Field access and sensitivity are separate policy dimensions, enforced by one server-side resolver | Accepted |
 | [0013](0013-native-client.md) | A native Rust/GPUI client replaces the React dashboard | Accepted |
+| [0014](0014-saved-analytics-authority.md) | Saving, scheduling and delivering a query grants nothing | Accepted |
+| [0015](0015-durable-scheduler.md) | Durable scheduling in PostgreSQL, executed by the worker | Accepted |
+| [0016](0016-deterministic-analysis.md) | Deterministic, explainable analysis first; models may only narrate | Accepted |

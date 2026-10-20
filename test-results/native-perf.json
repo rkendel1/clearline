@@ -1,35 +1,35 @@
 {
-  "generated_at": "2026-10-20T00:44:06.010Z",
+  "generated_at": "2026-10-20T02:51:00.896Z",
   "binary": "/home/user/clearline/native/target/release/clearline",
   "launch": {
     "event": "ready",
-    "spawn_to_ready_ms": 143
+    "spawn_to_ready_ms": 284
   },
-  "startup_ms": 130.59,
-  "large_result_request_to_frame_ms": 256.74,
+  "startup_ms": 276.17,
+  "large_result_request_to_frame_ms": 228.19,
   "scroll_5000_rows": {
     "n": 150,
-    "mean_ms": 43.17,
-    "p50_ms": 47.98,
-    "p95_ms": 48.09,
-    "max_ms": 64.03,
-    "fps_mean": 23.16
+    "mean_ms": 68.01,
+    "p50_ms": 64.01,
+    "p95_ms": 95.94,
+    "max_ms": 112.05,
+    "fps_mean": 14.7
   },
   "typing_while_query_runs": {
     "n": 120,
-    "mean_ms": 68.09,
-    "p50_ms": 63.72,
-    "p95_ms": 79.68,
-    "max_ms": 95.78,
-    "fps_mean": 14.69
+    "mean_ms": 84.66,
+    "p50_ms": 79.65,
+    "p95_ms": 127.68,
+    "max_ms": 143.67,
+    "fps_mean": 11.81
   },
   "typing_idle": {
     "n": 120,
-    "mean_ms": 48.13,
-    "p50_ms": 47.7,
-    "p95_ms": 50.62,
-    "max_ms": 63.73,
-    "fps_mean": 20.78
+    "mean_ms": 86.14,
+    "p50_ms": 79.7,
+    "p95_ms": 95.85,
+    "max_ms": 127.69,
+    "fps_mean": 11.61
   },
   "note": "Measured under Xvfb with Mesa lavapipe (software Vulkan); a GPU desktop renders faster. Frame intervals are between frames GPUI actually drew."
 }

@@ -3,7 +3,7 @@
 //! the bearer token; the server decides tenant, role and what is returned.
 
 use crate::types::*;
-use serde::de::DeserializeOwned;
+use serde::{de::DeserializeOwned, Deserialize};
 use serde_json::{json, Value};
 use std::fmt;
 use std::time::Duration;
@@ -218,4 +218,52 @@ pub fn new_execution_id() -> String {
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     let h: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+}
+
+// ------------------------------------------------------------------ saved analytics
+impl Client {
+    pub fn saved_queries(&self, tenant: &str, query: &str) -> Result<SavedQueryList> { self.get(&self.t(tenant, &format!("/saved-queries{query}"))) }
+    pub fn saved_query(&self, tenant: &str, id: &str) -> Result<SavedQueryDetail> { self.get(&self.t(tenant, &format!("/saved-queries/{}", enc(id)))) }
+    pub fn create_saved_query(&self, tenant: &str, body: &Value) -> Result<SavedQueryDetail> { self.post(&self.t(tenant, "/saved-queries"), body) }
+    pub fn update_saved_query(&self, tenant: &str, id: &str, body: &Value) -> Result<SavedQueryDetail> { self.post(&self.t(tenant, &format!("/saved-queries/{}", enc(id))), body) }
+    pub fn new_version(&self, tenant: &str, id: &str, body: &Value) -> Result<SavedQueryDetail> { self.post(&self.t(tenant, &format!("/saved-queries/{}/versions", enc(id))), body) }
+    pub fn saved_version(&self, tenant: &str, id: &str, version: i64) -> Result<SavedVersion> { self.get(&self.t(tenant, &format!("/saved-queries/{}/versions/{version}", enc(id)))) }
+    pub fn duplicate_saved_query(&self, tenant: &str, id: &str, name: Option<&str>) -> Result<SavedQueryDetail> { self.post(&self.t(tenant, &format!("/saved-queries/{}/duplicate", enc(id))), &json!({ "name": name })) }
+    pub fn set_saved_status(&self, tenant: &str, id: &str, status: &str) -> Result<SavedQueryDetail> { self.post(&self.t(tenant, &format!("/saved-queries/{}/status", enc(id))), &json!({ "status": status })) }
+    pub fn set_favorite(&self, tenant: &str, id: &str, favorite: bool) -> Result<Value> { self.post(&self.t(tenant, &format!("/saved-queries/{}/favorite", enc(id))), &json!({ "favorite": favorite })) }
+    pub fn execute_saved(&self, tenant: &str, id: &str, mode: &str, parameters: &Value) -> Result<SavedExecution> {
+        self.post(&self.t(tenant, &format!("/saved-queries/{}/execute", enc(id))), &json!({ "mode": mode, "parameters": parameters }))
+    }
+    pub fn run_saved(&self, tenant: &str, id: &str, parameters: &Value, destination_ids: Option<&[String]>) -> Result<Queued> {
+        self.post(&self.t(tenant, &format!("/saved-queries/{}/runs", enc(id))), &json!({ "parameters": parameters, "destination_ids": destination_ids }))
+    }
+    pub fn validate_analysis(&self, tenant: &str, id: &str, config: &Value) -> Result<AnalysisCheck> { self.post(&self.t(tenant, &format!("/saved-queries/{}/analyses/validate", enc(id))), &json!({ "config": config })) }
+
+    pub fn schedules(&self, tenant: &str, query_id: Option<&str>) -> Result<Vec<Schedule>> {
+        #[derive(Deserialize)] struct L { items: Vec<Schedule> }
+        let q = query_id.map(|i| format!("?query_id={}", enc(i))).unwrap_or_default();
+        self.get::<L>(&self.t(tenant, &format!("/analytics/schedules{q}"))).map(|l| l.items)
+    }
+    pub fn schedule(&self, tenant: &str, id: &str) -> Result<Schedule> { self.get(&self.t(tenant, &format!("/analytics/schedules/{}", enc(id)))) }
+    pub fn create_schedule(&self, tenant: &str, body: &Value) -> Result<Schedule> { self.post(&self.t(tenant, "/analytics/schedules"), body) }
+    pub fn update_schedule(&self, tenant: &str, id: &str, body: &Value) -> Result<Schedule> { self.post(&self.t(tenant, &format!("/analytics/schedules/{}", enc(id))), body) }
+    /// action: pause | resume | cancel
+    pub fn schedule_action(&self, tenant: &str, id: &str, action: &str) -> Result<Schedule> { self.post(&self.t(tenant, &format!("/analytics/schedules/{}/{}", enc(id), enc(action))), &json!({})) }
+    pub fn run_schedule_now(&self, tenant: &str, id: &str) -> Result<Queued> { self.post(&self.t(tenant, &format!("/analytics/schedules/{}/run", enc(id))), &json!({})) }
+    pub fn preview_schedule(&self, tenant: &str, body: &Value) -> Result<SchedulePreview> { self.post(&self.t(tenant, "/analytics/schedules/preview"), body) }
+
+    pub fn runs(&self, tenant: &str, query: &str) -> Result<RunList> { self.get(&self.t(tenant, &format!("/analytics/runs{query}"))) }
+    pub fn run(&self, tenant: &str, id: &str) -> Result<RunDetail> { self.get(&self.t(tenant, &format!("/analytics/runs/{}", enc(id)))) }
+    pub fn run_result(&self, tenant: &str, id: &str, offset: u32, limit: u32) -> Result<RunResultPage> { self.get(&self.t(tenant, &format!("/analytics/runs/{}/result?offset={offset}&limit={limit}", enc(id)))) }
+    pub fn retry_deliveries(&self, tenant: &str, id: &str) -> Result<Value> { self.post(&self.t(tenant, &format!("/analytics/runs/{}/retry-deliveries", enc(id))), &json!({})) }
+    pub fn rerun(&self, tenant: &str, id: &str) -> Result<Queued> { self.post(&self.t(tenant, &format!("/analytics/runs/{}/rerun", enc(id))), &json!({})) }
+    pub fn review_clusters(&self, tenant: &str, analysis_id: &str, names: &Value) -> Result<Value> { self.post(&self.t(tenant, &format!("/analytics/analyses/{}/review", enc(analysis_id))), &json!({ "cluster_names": names })) }
+
+    pub fn destinations(&self, tenant: &str) -> Result<Destinations> { self.get(&self.t(tenant, "/analytics/destinations")) }
+    pub fn create_destination(&self, tenant: &str, body: &Value) -> Result<Destination> { self.post(&self.t(tenant, "/analytics/destinations"), body) }
+    pub fn update_destination(&self, tenant: &str, id: &str, body: &Value) -> Result<Destination> { self.post(&self.t(tenant, &format!("/analytics/destinations/{}", enc(id))), body) }
+    pub fn test_destination(&self, tenant: &str, id: &str) -> Result<TestDelivery> { self.post(&self.t(tenant, &format!("/analytics/destinations/{}/test", enc(id))), &json!({})) }
+
+    pub fn notifications(&self, tenant: &str, unread: bool) -> Result<Notifications> { self.get(&self.t(tenant, &format!("/notifications?limit=100{}", if unread { "&unread=true" } else { "" }))) }
+    pub fn mark_read(&self, tenant: &str, id: &str) -> Result<Value> { self.post(&self.t(tenant, &format!("/notifications/{}/read", enc(id))), &json!({})) }
 }

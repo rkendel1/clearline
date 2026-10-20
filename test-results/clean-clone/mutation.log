@@ -1,0 +1,36 @@
+
+> clearline@0.1.0 test:mutation
+> tsx scripts/mutation-check.ts
+
+killed   trust-always-granted                     by: Scenario D: invalid records are quarantined with actionable errors and excluded from metrics; Scenario I: discrepancies are detected, explained, and removed from trusted outputs
+killed   route-tenant-check-removed               by: Scenario G: cross-tenant and sensitive-export attempts are denied and audited
+killed   data-layer-tenant-guard-removed          by: data layer refuses a tenant transaction that does not match the request principal (independent of route checks)
+killed   idempotency-removed                      by: Scenario C: duplicate submissions have no duplicate business effects
+killed   redaction-removed                        by: Scenario A: valid batch flows from source row to metric and extract; Scenario G: cross-tenant and sensitive-export attempts are denied and audited
+killed   control-count-ignored                    by: Scenario I: discrepancies are detected, explained, and removed from trusted outputs
+killed   untrusted-versions-count-as-duplicates   by: Scenario I: discrepancies are detected, explained, and removed from trusted outputs
+killed   trusted-view-uses-current-only           by: Scenario I: discrepancies are detected, explained, and removed from trusted outputs
+killed   self-approval-allowed                    by: Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely
+killed   platform-admin-escalation                by: platform admin cannot escalate into tenant data: bootstrap-only token issuance and revocation
+killed   migration-drift-unchecked                by: Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely
+killed   queued-batch-uses-superseded-contract    by: Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely
+killed   dataset-checks-ignored-by-metrics        by: Scenario I: discrepancies are detected, explained, and removed from trusted outputs
+killed   audit-floor-removed                      by: audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor
+killed   validator-restricted-check-removed       by: Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions; Scenario N4: error messages, query history and exports disclose nothing; filter-only fields: relationship joins and null tests only; never returned, compared, sorted, grouped or aggregated; masked fields are returned only in redacted form, computed by the database; relationship joins between restricted keys are allowed only along declared relationships
+killed   mask-rewrite-skipped                     by: Scenario L: a restricted field cannot be obtained by a role that may not see it; Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail
+killed   hidden-columns-granted                   by: Scenario L: a restricted field cannot be obtained by a role that may not see it
+killed   steward-may-widen                        by: Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail
+killed   sensitivity-does-not-mask                by: Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail; contract defaults reproduce the pre-existing rule: pii/phi sensitive, unmasked for admins only
+killed   history-not-withheld                     by: Scenario N4: error messages, query history and exports disclose nothing
+killed   execute-without-revalidation             by: Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL; Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed
+killed   records-unredacted                       by: Scenario G: cross-tenant and sensitive-export attempts are denied and audited; Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail
+killed   revoked-identity-still-runs              by: Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed
+killed   run-as-role-not-delegation-checked       by: Scenario Q4: lost authorization blocks the next run; a failed query is never reported as delivered
+killed   delivery-not-reauthorized                by: Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered; Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed
+killed   webhook-private-targets-allowed          by: Scenario T2: webhook destinations cannot target private, loopback, link-local or credentialed endpoints; SSRF: every resolved address is checked (a rebinding-style answer mixing public and private is refused); webhook: the connection is pinned to the checked address (no second DNS lookup), redirects are not followed, the signature verifies
+killed   failed-delivery-reported-success         by: Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query; Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered
+killed   sensitive-feature-allowed                by: Scenario S4: sensitive or redacted fields cannot enter an analysis; insufficient data is explicit; configuration: redacted, sensitive, non-numeric and missing columns are refused; schema drift is stale
+killed   narrative-not-grounded                   by: Scenario S5: model-written summaries are checked against computed evidence and never replace it; model summaries cannot override computed metrics: ungrounded numbers and causal claims are rejected
+killed   run-results-not-remasked                 by: Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered
+killed   notifications-not-recipient-scoped       by: Scenario R1: one run delivered to in-app, email (with CSV), a signed webhook (after transient failures) and an export; Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query; Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered; Scenario R4: test deliveries report exactly what happened
+31/31 mutations killed

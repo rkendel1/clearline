@@ -29,6 +29,12 @@ x-app: &app
     NL_SQL_PROVIDER: ${NL_SQL_PROVIDER:-deterministic}
     ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+    # Saved analytics. The scheduler runs in the worker. Email is written to files in the worker
+    # container (no mail server needed for the demo); use EMAIL_PROVIDER=smtp with SMTP_URL for real mail.
+    EMAIL_PROVIDER: ${EMAIL_PROVIDER:-file}
+    EMAIL_OUTBOX_DIR: /tmp/clearline-outbox
+    SMTP_URL: ${SMTP_URL:-}
+    PUBLIC_URL: http://localhost:${API_HOST_PORT:-8080}
   restart: unless-stopped
 
 services:

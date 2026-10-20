@@ -45,6 +45,36 @@ export interface Config {
   queryMaxConcurrent: number;
   queryDatabaseUrl: string;        // login used ONLY for analytical queries (no privileges of its own)
   queryLoginRole: string;
+  // Saved analytics: scheduler, runs, analyses, delivery (docs/saved-analytics.md)
+  schedulerEnabled: boolean;       // run the scheduler loop in worker processes
+  schedulerTickMs: number;
+  schedulerMaxConcurrent: number;  // runs executing at once per worker process
+  schedulerMaxPerTenant: number;   // runs executing at once per tenant, across all workers
+  runLeaseSeconds: number;
+  runRetryBaseMs: number;          // exponential backoff base for transient run failures
+  runRetryMaxMs: number;
+  runResultRetentionHours: number; // bounded result snapshots used by analyses and delivery retries
+  analysisMaxRows: number;
+  analysisMaxFeatures: number;
+  analysisMaxPoints: number;
+  analysisMaxHorizon: number;
+  analysisTimeoutMs: number;
+  analysisMaxMemoryMb: number;
+  deliveryConcurrency: number;
+  deliveryTimeoutMs: number;
+  deliveryLeaseSeconds: number;
+  deliveryRetryBaseMs: number;
+  deliveryRetryMaxMs: number;
+  deliveryMaxRows: number;         // rows a webhook payload may carry when a destination includes rows
+  deliveryMaxBytes: number;        // payload / attachment size cap
+  exportExpiryHours: number;
+  webhookAllowPrivate: boolean;    // test/dev only: allow loopback/private webhook targets and plain http
+  emailProvider: 'none' | 'smtp' | 'file' | 'test';
+  smtpUrl: string;
+  emailFrom: string;
+  emailOutboxDir: string;
+  emailAllowedDomains: string[];   // empty = any domain
+  publicUrl: string;               // base URL used in links inside deliveries
 }
 
 function oneOf<T extends string>(name: string, allowed: readonly T[], def: T): T {
@@ -87,7 +117,38 @@ export function loadConfig(): Config {
     queryMaxConcurrent: int('QUERY_MAX_CONCURRENT', 4),
     queryDatabaseUrl: '',
     queryLoginRole: '',
+    schedulerEnabled: str('SCHEDULER_ENABLED', 'true') === 'true',
+    schedulerTickMs: int('SCHEDULER_TICK_MS', 1_000),
+    schedulerMaxConcurrent: int('SCHEDULER_MAX_CONCURRENT', 2),
+    schedulerMaxPerTenant: int('SCHEDULER_MAX_PER_TENANT', 2),
+    runLeaseSeconds: int('RUN_LEASE_SECONDS', 300),
+    runRetryBaseMs: int('RUN_RETRY_BASE_MS', 30_000),
+    runRetryMaxMs: int('RUN_RETRY_MAX_MS', 60 * 60_000),
+    runResultRetentionHours: int('RUN_RESULT_RETENTION_HOURS', 168),
+    analysisMaxRows: int('ANALYSIS_MAX_ROWS', 5_000),
+    analysisMaxFeatures: int('ANALYSIS_MAX_FEATURES', 20),
+    analysisMaxPoints: int('ANALYSIS_MAX_POINTS', 5_000),
+    analysisMaxHorizon: int('ANALYSIS_MAX_HORIZON', 104),
+    analysisTimeoutMs: int('ANALYSIS_TIMEOUT_MS', 10_000),
+    analysisMaxMemoryMb: int('ANALYSIS_MAX_MEMORY_MB', 256),
+    deliveryConcurrency: int('DELIVERY_CONCURRENCY', 4),
+    deliveryTimeoutMs: int('DELIVERY_TIMEOUT_MS', 10_000),
+    deliveryLeaseSeconds: int('DELIVERY_LEASE_SECONDS', 120),
+    deliveryRetryBaseMs: int('DELIVERY_RETRY_BASE_MS', 30_000),
+    deliveryRetryMaxMs: int('DELIVERY_RETRY_MAX_MS', 60 * 60_000),
+    deliveryMaxRows: int('DELIVERY_MAX_ROWS', 100),
+    deliveryMaxBytes: int('DELIVERY_MAX_BYTES', 1024 * 1024),
+    exportExpiryHours: int('EXPORT_EXPIRY_HOURS', 72),
+    webhookAllowPrivate: env !== 'production' && str('WEBHOOK_ALLOW_PRIVATE', 'false') === 'true',
+    emailProvider: oneOf('EMAIL_PROVIDER', ['none', 'smtp', 'file', 'test'] as const, 'none'),
+    smtpUrl: str('SMTP_URL', ''),
+    emailFrom: str('EMAIL_FROM', 'clearline@localhost'),
+    emailOutboxDir: str('EMAIL_OUTBOX_DIR', 'var/outbox'),
+    emailAllowedDomains: str('EMAIL_ALLOWED_DOMAINS', '').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean),
+    publicUrl: str('PUBLIC_URL', 'http://localhost:8080').replace(/\/$/, ''),
   };
+  if (env === 'production' && process.env.WEBHOOK_ALLOW_PRIVATE === 'true') throw new Error('WEBHOOK_ALLOW_PRIVATE is not permitted in production');
+  if (cfg.emailProvider === 'smtp' && !cfg.smtpUrl) throw new Error('EMAIL_PROVIDER=smtp requires SMTP_URL');
   // Analytical queries connect as a separate login that owns no privileges (so RESET ROLE leaves
   // it with nothing). Production must configure it explicitly; elsewhere it is derived from
   // DATABASE_URL with a local-only password, and the application provisions the role.

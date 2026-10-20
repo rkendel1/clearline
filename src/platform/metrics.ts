@@ -48,6 +48,9 @@ export const metrics = {
   rowsProcessed: new Counter('clearline_rows_processed_total', 'Rows processed by disposition'),
   batchDuration: new Histogram('clearline_batch_processing_seconds', 'Batch processing time (claim to commit)', [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 300]),
   authDenials: new Counter('clearline_authorization_denials_total', 'Authorization denials by reason'),
+  analyticsRunSeconds: new Histogram('clearline_analytics_run_seconds', 'Saved-query run execution time (claim to outcome, excluding delivery)', [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60]),
+  analyticsRuns: new Counter('clearline_analytics_runs_total', 'Saved-query runs by outcome'),
+  deliveryAttempts: new Counter('clearline_delivery_attempts_total', 'Delivery attempts by destination kind and result'),
 };
 
 /** Render process-local metrics plus gauges computed from the database at scrape time. */

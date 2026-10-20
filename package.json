@@ -31,7 +31,8 @@
     "native:build": "cargo build --release --manifest-path native/Cargo.toml",
     "native:test": "cargo test --manifest-path native/Cargo.toml -p clearline-client",
     "native:run": "cargo run --release --manifest-path native/Cargo.toml --bin clearline --",
-    "benchmark:query": "tsx scripts/benchmark-query.ts"
+    "benchmark:query": "tsx scripts/benchmark-query.ts",
+    "benchmark:analytics": "tsx scripts/benchmark-analytics.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",

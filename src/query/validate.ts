@@ -38,7 +38,16 @@ export interface ValidationIssue { code: string; message: string }
 
 export interface ColumnUse { table: string; column: string; access: AccessLevel; usages: string[] }
 
-export interface OutputColumn { name: string; table: string | null; column: string | null; masked: string | null }
+export interface OutputColumn {
+  name: string; table: string | null; column: string | null; masked: string | null;
+  /** Base columns the output derives from (lineage) and whether any of them is a sensitive field. */
+  sources: string[]; sensitive: boolean;
+}
+
+/** A declared parameter of a saved query, referenced in SQL as :name and bound by the driver as a typed $n. */
+export type ParamType = 'integer' | 'decimal' | 'date' | 'timestamp' | 'text' | 'boolean';
+export interface ParamDecl { name: string; type: ParamType }
+export const PARAM_PG_TYPES: Record<ParamType, string> = { integer: 'int8', decimal: 'numeric', date: 'date', timestamp: 'timestamptz', text: 'text', boolean: 'bool' };
 
 export interface ValidationResult {
   ok: boolean;
@@ -53,9 +62,11 @@ export interface ValidationResult {
   validated_sql_sha256: string | null;
   /** Deparse the rewritten tree with a different row cap (preview / truncation probe). */
   withLimit?: (n: number) => Promise<string>;
+  /** Declared parameters referenced by the SQL, in $n order (the order values must be bound in). */
+  parameters?: string[];
 }
 
-export interface ValidateOptions { maxRows: number; maxLength?: number }
+export interface ValidateOptions { maxRows: number; maxLength?: number; params?: ParamDecl[] }
 
 class Reject extends Error { constructor(readonly code: string, message: string) { super(message); } }
 
@@ -103,7 +114,9 @@ export class Validator {
   private summary: string[] = [];
   private subqueries = 0;
 
-  constructor(private cat: Catalog) {}
+  readonly paramsUsed = new Set<number>();
+
+  constructor(private cat: Catalog, private params: ParamDecl[] = []) {}
 
   /** Validate and rewrite (in place) one parsed SELECT tree. */
   run(stmt: Node): { outputs: ColInfo[] } {
@@ -388,6 +401,16 @@ export class Validator {
       }
       case 'A_Const':
         return { lineage: [], bare: null, agg: false };
+      case 'ParamRef': {
+        // Only declared parameters exist; each is bound by the driver (never interpolated) and typed by the declaration.
+        if (!this.params.length) throw new Reject('unsupported', 'Parameters are not supported in ad-hoc queries; declare them on a saved query and write them as :name.');
+        const decl = this.params[(v.number ?? 0) - 1];
+        if (!decl) throw new Reject('unknown_parameter', 'Parameters must be declared and written as :name.');
+        this.paramsUsed.add(v.number);
+        delete n.ParamRef;
+        n.TypeCast = { arg: { ParamRef: v }, typeName: { names: [{ String: { sval: PARAM_PG_TYPES[decl.type] } }], typemod: -1 } };
+        return { lineage: [], bare: null, agg: false };
+      }
       case 'TypeCast': {
         const names = (v.typeName?.names ?? []).map((x: Node) => str(x));
         const tn = names.at(-1);
@@ -539,16 +562,26 @@ export async function validateSql(sql: string, cat: Catalog, opts: ValidateOptio
   const fail = (code: string, message: string, v?: Validator): ValidationResult => ({ ok: false, issues: [{ code, message }], ...empty, ...(v ? v.report() : {}), output: [], summary: [] });
   if (typeof sql !== 'string' || !sql.trim()) return fail('empty', 'There is no SQL to validate.');
   if (sql.length > (opts.maxLength ?? LIMITS.length)) return fail('too_long', `SQL is limited to ${opts.maxLength ?? LIMITS.length} characters.`);
+  let source = sql;
+  if (opts.params) {
+    const b = bindNamedParameters(sql, opts.params.map((p) => p.name));
+    if ('error' in b) return fail(b.code, b.error);
+    source = b.sql;
+  }
   let tree: Node;
-  try { tree = await parse(sql); } catch (err) { return fail('syntax_error', `SQL syntax error: ${(err as Error).message}`); }
+  try { tree = await parse(source); } catch (err) { return fail('syntax_error', `SQL syntax error: ${(err as Error).message}`); }
   const stmts = (tree.stmts ?? []) as Node[];
   if (stmts.length !== 1) return fail('multiple_statements', stmts.length ? 'Exactly one statement is allowed; remove the extra statements.' : 'There is no statement.');
   const stmt = stmts[0].stmt as Node;
   if (!stmt.SelectStmt) return fail('not_read_only', `Only read-only SELECT queries are allowed (got ${kind(stmt).replace(/Stmt$/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase()}).`);
 
-  const v = new Validator(cat);
+  const v = new Validator(cat, opts.params);
   let outputs: ColInfo[];
-  try { outputs = v.run(stmt).outputs; }
+  try {
+    outputs = v.run(stmt).outputs;
+    const unused = (opts.params ?? []).filter((_, i) => !v.paramsUsed.has(i + 1));
+    if (unused.length) throw new Reject('unused_parameter', `Declared parameter${unused.length > 1 ? 's' : ''} ${unused.map((p) => `:${p.name}`).join(', ')} ${unused.length > 1 ? 'are' : 'is'} not used in the SQL.`);
+  }
   catch (err) {
     if (err instanceof Reject) return fail(err.code, err.message, v);
     if (err instanceof RangeError) return fail('too_complex', 'The query is too complex to validate.');
@@ -571,7 +604,56 @@ export async function validateSql(sql: string, cat: Catalog, opts: ValidateOptio
   const report = v.report();
   return {
     ok: true, issues: [], ...report,
-    output: outputs.map((o) => ({ name: o.name, table: o.bare?.table ?? null, column: o.bare?.col.name ?? null, masked: restricted(o).length ? o.bare!.col.redaction : null })),
+    output: outputs.map((o) => ({ name: o.name, table: o.bare?.table ?? null, column: o.bare?.col.name ?? null, masked: restricted(o).length ? o.bare!.col.redaction : null,
+      sources: [...new Set(o.lineage.map(fq))], sensitive: o.lineage.some((b) => b.col.sensitive) })),
     validated_sql: validated, validated_sql_sha256: sha(validated), withLimit: render,
+    parameters: (opts.params ?? []).map((p) => p.name),
   };
 }
+
+/**
+ * Rewrite :name placeholders to $n (n = position in `names`), skipping string literals,
+ * quoted identifiers, comments, dollar-quoted text and `::` casts. Positional $n written
+ * by the user is refused so every parameter is declared and typed.
+ */
+export function bindNamedParameters(sql: string, names: string[]): { sql: string } | { error: string; code: string } {
+  let out = '';
+  let i = 0;
+  const n = sql.length;
+  const isIdent = (c: string) => /[A-Za-z0-9_]/.test(c);
+  while (i < n) {
+    const c = sql[i];
+    const next = sql[i + 1];
+    if (c === "'") {
+      // E'...' strings allow backslash escapes; standard strings only doubled quotes.
+      const escape = i > 0 && /[eE]/.test(sql[i - 1]) && (i < 2 || !isIdent(sql[i - 2]));
+      let j = i + 1;
+      while (j < n) {
+        if (escape && sql[j] === '\\') { j += 2; continue; }
+        if (sql[j] === "'") { if (sql[j + 1] === "'") { j += 2; continue; } break; }
+        j++;
+      }
+      out += sql.slice(i, j + 1); i = j + 1; continue;
+    }
+    if (c === '"') { const j = sql.indexOf('"', i + 1); const e = j < 0 ? n : j + 1; out += sql.slice(i, e); i = e; continue; }
+    if (c === '-' && next === '-') { const j = sql.indexOf('\n', i); const e = j < 0 ? n : j; out += sql.slice(i, e); i = e; continue; }
+    if (c === '/' && next === '*') { const j = sql.indexOf('*/', i + 2); const e = j < 0 ? n : j + 2; out += sql.slice(i, e); i = e; continue; }
+    if (c === '$' && !(i > 0 && isIdent(sql[i - 1]))) {
+      if (/[0-9]/.test(next ?? '')) return { code: 'positional_parameter', error: 'Write parameters as :name (declared with a type), not $1.' };
+      const m = /^\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(sql.slice(i));
+      if (m) { const j = sql.indexOf(m[0], i + m[0].length); const e = j < 0 ? n : j + m[0].length; out += sql.slice(i, e); i = e; continue; }
+    }
+    if (c === ':') {
+      if (next === ':') { out += '::'; i += 2; continue; }
+      const m = /^:([A-Za-z_][A-Za-z0-9_]*)/.exec(sql.slice(i));
+      if (m && !(i > 0 && sql[i - 1] === ':')) {
+        const k = names.indexOf(m[1]);
+        if (k < 0) return { code: 'unknown_parameter', error: `Parameter :${m[1]} is not declared.` };
+        out += `$${k + 1}`; i += m[0].length; continue;
+      }
+    }
+    out += c; i++;
+  }
+  return { sql: out };
+}
+

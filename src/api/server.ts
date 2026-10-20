@@ -128,6 +128,18 @@ async function dbGauges(): Promise<string[]> {
       for (const r of s.rows) lines.push(`clearline_batches{tenant="${r.tenant_id}",status="${r.status}",trust="${r.trust_status}"} ${r.n}`);
       const w = await tx.query(`SELECT count(*) FILTER (WHERE last_seen > now() - interval '60 seconds' AND state <> 'stopped')::int AS live FROM core.worker_heartbeats`);
       lines.push('# HELP clearline_workers_live Workers with a heartbeat in the last 60s', '# TYPE clearline_workers_live gauge', `clearline_workers_live ${w.rows[0].live}`);
+      const ar = await tx.query(`SELECT tenant_id, status, count(*)::int AS n, EXTRACT(EPOCH FROM now() - min(next_attempt_at)) FILTER (WHERE status = 'queued') AS oldest
+        FROM core.analytics_runs WHERE status IN ('queued','running','delivering') GROUP BY 1,2`);
+      lines.push('# HELP clearline_analytics_runs_active Saved-query runs queued, running or delivering', '# TYPE clearline_analytics_runs_active gauge');
+      for (const r of ar.rows) lines.push(`clearline_analytics_runs_active{tenant="${r.tenant_id}",status="${r.status}"} ${r.n}`);
+      lines.push('# HELP clearline_analytics_oldest_due_seconds Age of the oldest due, unclaimed run', '# TYPE clearline_analytics_oldest_due_seconds gauge');
+      for (const r of ar.rows.filter((x) => x.status === 'queued')) lines.push(`clearline_analytics_oldest_due_seconds{tenant="${r.tenant_id}"} ${Math.max(0, Number(r.oldest ?? 0)).toFixed(1)}`);
+      const dl = await tx.query(`SELECT tenant_id, kind, status, count(*)::int AS n FROM core.deliveries WHERE status IN ('pending','sending','retrying','failed','blocked') GROUP BY 1,2,3`);
+      lines.push('# HELP clearline_deliveries Deliveries pending, retrying or not delivered', '# TYPE clearline_deliveries gauge');
+      for (const r of dl.rows) lines.push(`clearline_deliveries{tenant="${r.tenant_id}",kind="${r.kind}",status="${r.status}"} ${r.n}`);
+      const at = await tx.query(`SELECT tenant_id, count(*)::int AS n FROM core.schedules WHERE status = 'active' AND attention IS NOT NULL GROUP BY 1`);
+      lines.push('# HELP clearline_schedules_needing_attention Active schedules whose last run could not proceed (e.g. lost authorization)', '# TYPE clearline_schedules_needing_attention gauge');
+      for (const r of at.rows) lines.push(`clearline_schedules_needing_attention{tenant="${r.tenant_id}"} ${r.n}`);
     });
   } catch (err) {
     lines.push(`# database gauges unavailable: ${(err as Error).message.replace(/\n/g, ' ')}`);

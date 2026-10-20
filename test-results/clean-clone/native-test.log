@@ -1,0 +1,52 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling libc v0.2.191
+   Compiling quote v1.0.47
+   Compiling serde_core v1.0.229
+   Compiling zeroize v1.9.1
+   Compiling httparse v1.10.1
+   Compiling rustls-pki-types v1.15.1
+   Compiling crc32fast v1.5.2
+   Compiling getrandom v0.2.17
+   Compiling syn v3.0.9
+   Compiling ring v0.17.14
+   Compiling simd-adler32 v0.3.10
+   Compiling serde v1.0.229
+   Compiling serde_json v1.0.154
+   Compiling log v0.4.34
+   Compiling http v1.5.0
+   Compiling rustls-webpki v0.103.15
+   Compiling serde_derive v1.0.229
+   Compiling miniz_oxide v0.9.1
+   Compiling subtle v2.6.1
+   Compiling once_cell v1.21.4
+   Compiling memchr v2.8.3
+   Compiling ureq-proto v0.6.5
+   Compiling rustls v0.23.46
+   Compiling flate2 v1.1.10
+   Compiling webpki-roots v1.0.10
+   Compiling ureq v3.4.2
+   Compiling clearline-client v0.1.0 (/tmp/claude-0/-home-user-clearline/92d88a1e-d8c8-5388-ad11-df333654c480/scratchpad/clean/native/crates/clearline-client)
+    Finished `release` profile [optimized + debuginfo] target(s) in 33.13s
+     Running unittests src/lib.rs (native/target/release/deps/clearline_client-f866cc55adac9cdb)
+
+running 3 tests
+test format::tests::digits_and_units ... ok
+test format::tests::timestamps ... ok
+test api::tests::errors_map_to_actionable_kinds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/backend.rs (native/target/release/deps/backend-6e5d3647426ba0cd)
+
+running 2 tests
+test analytics_endpoints_decode_for_every_role_and_respect_permissions ... ok
+test every_role_decodes_what_it_may_see_and_is_refused_the_rest ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests clearline_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

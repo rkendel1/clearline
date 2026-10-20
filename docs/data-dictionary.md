@@ -11,10 +11,76 @@ Three layers: **platform tables** in schema `core` (fixed, versioned migrations 
 | 0001_core.sql | 2026-10-20 | `b900972405558a85…` |
 | 0002_review_hardening.sql | 2026-10-20 | `194358b67e16f02b…` |
 | 0003_query_workspace.sql | 2026-10-20 | `d031b1be1999c7e9…` |
+| 0004_saved_analytics.sql | 2026-10-20 | `45737303184230b8…` |
 
 Tenant storage changes are not platform migrations: they are contract migrations, planned and recorded in `core.contract_migrations` (see docs/contracts.md).
 
 ## Platform tables (`core`)
+
+### core.analysis_runs
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| run_id | uuid | no |
+| query_id | uuid | no |
+| query_version | integer | no |
+| analysis_key | text | no |
+| analysis_type | text | no |
+| algorithm | text | no |
+| algorithm_version | text | no |
+| config | jsonb | no |
+| status | text | no |
+| message | text | yes |
+| result | jsonb | yes |
+| quality | jsonb | yes |
+| input_rows | integer | yes |
+| timings | jsonb | no |
+| review | jsonb | yes |
+| created_at | timestamp with time zone | no |
+
+### core.analytics_runs
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| query_id | uuid | no |
+| query_version | integer | no |
+| schedule_id | uuid | yes |
+| occurrence_at | timestamp with time zone | yes |
+| trigger | text | no |
+| requested_by | text | no |
+| run_as_actor | text | no |
+| run_as_role | text | no |
+| parameters | jsonb | no |
+| destination_ids | ARRAY | no |
+| status | text | no |
+| query_status | text | no |
+| analysis_status | text | no |
+| delivery_status | text | no |
+| failure_class | text | yes |
+| error_code | text | yes |
+| error_message | text | yes |
+| attempt | integer | no |
+| max_attempts | integer | no |
+| next_attempt_at | timestamp with time zone | yes |
+| lease_owner | text | yes |
+| lease_expires_at | timestamp with time zone | yes |
+| execution_id | uuid | yes |
+| result_meta | jsonb | yes |
+| timings | jsonb | no |
+| policy_epoch | bigint | yes |
+| missed_occurrences | integer | no |
+| correlation_id | text | yes |
+| created_at | timestamp with time zone | no |
+| started_at | timestamp with time zone | yes |
+| finished_at | timestamp with time zone | yes |
 
 ### core.api_tokens
 
@@ -180,6 +246,70 @@ Immutable contract documents per tenant with lifecycle (pending_approval, active
 | created_at | timestamp with time zone | no |
 | activated_at | timestamp with time zone | yes |
 
+### core.deliveries
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| run_id | uuid | no |
+| destination_id | uuid | no |
+| destination_version | integer | no |
+| kind | text | no |
+| status | text | no |
+| attempts | integer | no |
+| max_attempts | integer | no |
+| next_attempt_at | timestamp with time zone | yes |
+| lease_owner | text | yes |
+| lease_expires_at | timestamp with time zone | yes |
+| last_error_code | text | yes |
+| last_error | text | yes |
+| delivered_at | timestamp with time zone | yes |
+| payload_sha256 | text | yes |
+| created_at | timestamp with time zone | no |
+| updated_at | timestamp with time zone | no |
+
+### core.delivery_attempts
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | bigint | no |
+| tenant_id | text | no |
+| delivery_id | uuid | no |
+| attempt | integer | no |
+| outcome | text | no |
+| status_code | integer | yes |
+| error_code | text | yes |
+| error | text | yes |
+| duration_ms | integer | yes |
+| started_at | timestamp with time zone | no |
+| finished_at | timestamp with time zone | no |
+
+### core.delivery_destinations
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| name | text | no |
+| kind | text | no |
+| config | jsonb | no |
+| content | text | no |
+| notify_on | text | no |
+| enabled | boolean | no |
+| max_attempts | integer | no |
+| version | integer | no |
+| created_by | text | no |
+| created_at | timestamp with time zone | no |
+| updated_by | text | no |
+| updated_at | timestamp with time zone | no |
+
 ### core.erasure_log
 
 Subject erasures: SHA-256 of the key (never the key), counts and affected prior exports.
@@ -212,6 +342,29 @@ Every extract produced: parameters, as_of, row count, content SHA-256 and the re
 | row_count | integer | no |
 | content_sha256 | text | no |
 | record_refs | jsonb | no |
+| created_at | timestamp with time zone | no |
+
+### core.exports
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| run_id | uuid | no |
+| delivery_id | uuid | yes |
+| query_id | uuid | no |
+| role | text | no |
+| file_name | text | no |
+| content | bytea | yes |
+| bytes | integer | no |
+| row_count | integer | no |
+| truncated | boolean | no |
+| sha256 | text | no |
+| redacted_columns | jsonb | no |
+| downloads | integer | no |
+| expires_at | timestamp with time zone | no |
 | created_at | timestamp with time zone | no |
 
 ### core.field_policies
@@ -251,6 +404,46 @@ Every extract produced: parameters, as_of, row count, content SHA-256 and the re
 | changed_role | text | no |
 | changed_at | timestamp with time zone | no |
 | correlation_id | text | yes |
+
+### core.insights
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| run_id | uuid | no |
+| analysis_run_id | uuid | yes |
+| query_id | uuid | no |
+| kind | text | no |
+| severity | text | no |
+| metric | text | yes |
+| title | text | no |
+| body | text | no |
+| narrative | jsonb | yes |
+| evidence | jsonb | no |
+| created_at | timestamp with time zone | no |
+
+### core.notifications
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| recipient | text | no |
+| run_id | uuid | yes |
+| delivery_id | uuid | yes |
+| query_id | uuid | yes |
+| kind | text | no |
+| severity | text | no |
+| title | text | no |
+| body | text | no |
+| links | jsonb | no |
+| read_at | timestamp with time zone | yes |
+| created_at | timestamp with time zone | no |
 
 ### core.quality_findings
 
@@ -316,7 +509,7 @@ Rows held out of canonical data, with category and the full list of errors; open
 |---|---|---|
 | id | uuid | no |
 | tenant_id | text | no |
-| proposal_id | uuid | no |
+| proposal_id | uuid | yes |
 | actor | text | no |
 | role | text | no |
 | mode | text | no |
@@ -333,6 +526,9 @@ Rows held out of canonical data, with category and the full list of errors; open
 | correlation_id | text | yes |
 | started_at | timestamp with time zone | no |
 | finished_at | timestamp with time zone | yes |
+| saved_query_id | uuid | yes |
+| saved_query_version | integer | yes |
+| run_id | uuid | yes |
 
 ### core.query_proposals
 
@@ -416,6 +612,111 @@ Maps database roles used by BI tools to exactly one tenant (used by row-level se
 |---|---|---|
 | role_name | text | no |
 | tenant_id | text | no |
+
+### core.run_results
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| run_id | uuid | no |
+| tenant_id | text | no |
+| columns | jsonb | no |
+| rows | jsonb | no |
+| row_count | integer | no |
+| truncated | boolean | no |
+| bytes | integer | no |
+| sha256 | text | no |
+| created_at | timestamp with time zone | no |
+| expires_at | timestamp with time zone | no |
+
+### core.saved_queries
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| name | text | no |
+| description | text | yes |
+| purpose | text | yes |
+| category | text | yes |
+| business_owner | text | yes |
+| tags | ARRAY | no |
+| owner_actor | text | no |
+| owner_role | text | no |
+| sharing | text | no |
+| status | text | no |
+| current_version | integer | no |
+| duplicated_from | uuid | yes |
+| needs_revalidation | text | yes |
+| created_at | timestamp with time zone | no |
+| updated_at | timestamp with time zone | no |
+| updated_by | text | no |
+
+### core.saved_query_favorites
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| tenant_id | text | no |
+| query_id | uuid | no |
+| actor | text | no |
+| created_at | timestamp with time zone | no |
+
+### core.saved_query_versions
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| tenant_id | text | no |
+| query_id | uuid | no |
+| version | integer | no |
+| sql | text | no |
+| sql_sha256 | text | no |
+| question | text | yes |
+| source_proposal_id | uuid | yes |
+| parameters | jsonb | no |
+| output_schema | jsonb | yes |
+| analyses | jsonb | no |
+| change_note | text | yes |
+| created_by | text | no |
+| created_role | text | no |
+| created_at | timestamp with time zone | no |
+
+### core.schedules
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| query_id | uuid | no |
+| name | text | no |
+| pinned_version | integer | yes |
+| rrule | text | yes |
+| start_local | text | no |
+| timezone | text | no |
+| until_local | text | yes |
+| parameters | jsonb | no |
+| run_as_actor | text | no |
+| run_as_role | text | no |
+| status | text | no |
+| next_run_at | timestamp with time zone | yes |
+| last_run_id | uuid | yes |
+| attention | text | yes |
+| max_attempts | integer | no |
+| destination_ids | ARRAY | no |
+| version | integer | no |
+| created_by | text | no |
+| created_role | text | no |
+| created_at | timestamp with time zone | no |
+| updated_by | text | no |
+| updated_at | timestamp with time zone | no |
 
 ### core.tenants
 

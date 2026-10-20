@@ -108,19 +108,66 @@ Same machine. Dataset: 5,000 members and 100,000 claims loaded through the API; 
 npm run benchmark:query                     # QBENCH_CLAIMS=20000 QBENCH_ITER=50 for a quicker run
 ```
 
+## Saved analytics
+
+<!-- From test-results/benchmark-analytics.json (`npm run benchmark:analytics`, 2026-10-20T02:11:02.332Z). -->
+
+Same machine. 51,483 current claims (the 180-day analytics dataset plus 50,000 random claims) loaded through the API. Defaults: ANALYSIS_MAX_ROWS 5,000, ANALYSIS_MAX_POINTS 5,000, SCHEDULER_MAX_CONCURRENT 2, SCHEDULER_MAX_PER_TENANT 2.
+
+**Algorithms in process** (no database; the large inputs exceed the default caps, which were raised for this measurement only):
+
+| Algorithm | Input | n | p50 ms | p95 ms | max ms | prepare / algorithm p50 ms |
+|---|---|---:|---:|---:|---:|---|
+| `anomaly.rolling_mad` | Small: 180 points | 10 | 8.57 | 14.05 | 14.05 | 0.49 / 7.94 |
+| `anomaly.rolling_mad` | Medium: 1000 points | 10 | 51.7 | 62.09 | 62.09 | 2.2 / 49.2 |
+| `anomaly.rolling_mad` | Large: 5000 points | 5 | 214.39 | 233.24 | 233.24 | 9.65 / 204.83 |
+| `anomaly.seasonal_decomposition` | Small: 180 points | 10 | 0.85 | 2.22 | 2.22 | 0.35 / 0.51 |
+| `anomaly.seasonal_decomposition` | Medium: 1000 points | 10 | 5.08 | 5.74 | 5.74 | 1.9 / 2.97 |
+| `anomaly.seasonal_decomposition` | Large: 5000 points | 5 | 26.03 | 26.55 | 26.55 | 9.52 / 15.38 |
+| `forecast.auto` | Small: 180 points | 10 | 1.45 | 9.79 | 9.79 | 0.41 / 1.04 |
+| `forecast.auto` | Medium: 1000 points | 10 | 6.26 | 7.26 | 7.26 | 2.06 / 4.27 |
+| `forecast.auto` | Large: 5000 points | 5 | 31.26 | 32.02 | 32.02 | 9.81 / 19.62 |
+| `outlier.robust_distance` | Small: 500 rows × 3 features | 10 | 3.46 | 13.25 | 13.25 | 0.2 / 3.25 |
+| `outlier.robust_distance` | Medium: 5000 rows × 3 features | 10 | 35.38 | 46.68 | 46.68 | 0.79 / 34.56 |
+| `outlier.robust_distance` | Large: 20000 rows × 3 features | 5 | 130.19 | 166.21 | 166.21 | 4.56 / 125.28 |
+| `cluster.kmeans` | Small: 500 rows × 3 features | 10 | 6.69 | 20.73 | 20.73 | 0.1 / 6.57 |
+| `cluster.kmeans` | Medium: 5000 rows × 3 features | 10 | 52.4 | 64.93 | 64.93 | 0.56 / 51.79 |
+| `cluster.kmeans` | Large: 20000 rows × 3 features | 5 | 134.46 | 165.49 | 165.49 | 2.3 / 131.67 |
+
+**End-to-end runs** (manual run queued over HTTP, then claimed and executed by the scheduler: identity re-check, query under the run identity's role, bounded snapshot, analyses, insights, and four deliveries — in-app, signed webhook with rows to a loopback receiver, email through the in-memory test provider, CSV export; phase times are the run's own records, p50 in ms):
+
+| Saved query | Rows | Analyses | Queue wait | Identity | Query | Snapshot | Analyses | Delivery | Wall p50 | Wall p95 |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Small: Daily paid (180 days) | 180 | `anomaly.rolling_mad`, `forecast.auto` | 14 | 1 | 38 | 4 | 21 | 28 | 152.32 | 267.33 |
+| Medium: Paid by member (top 2,000) | 2,000 | `outlier.robust_distance` | 9 | 0 | 49 | 7 | 13 | 40 | 152.53 | 167.07 |
+| Large: Claims (5,000 rows) | 5,000 | `outlier.robust_distance`, `cluster.kmeans` | 9 | 0 | 43 | 13 | 151 | 56 | 322.28 | 363.38 |
+
+Webhook deliveries received: 30, all with a valid signature: yes.
+
+**Burst:** 40 runs queued at once (enqueue 204 ms over HTTP) were drained by one scheduler process in 2,860 ms (14 runs/s, 2 ticks; outcome 40 succeeded).
+
+- The cost per input unit does not grow from small to large inputs (for example `anomaly.rolling_mad` 47.6 → 42.9 ms per 1,000 points, `cluster.kmeans` 13.4 → 6.7 ms per 1,000 rows), i.e. roughly linear in this range. The slowest case measured was `anomaly.rolling_mad` on the large input at 214.39 ms; with the defaults, inputs are capped at ANALYSIS_MAX_ROWS / ANALYSIS_MAX_POINTS (5,000).
+- In end-to-end runs the largest phase was query (38 ms) for the 180-row query and analyses (151 ms) for the 5,000-row query. Wall time also includes the HTTP request that queues the run and the scheduler's claim and finalization transactions.
+- The scheduler executes at most SCHEDULER_MAX_CONCURRENT runs at once per process and SCHEDULER_MAX_PER_TENANT per tenant across processes; the 40-run burst was worked off within those limits, and the database holds exactly one run per request (40 succeeded).
+- The webhook receiver and the email provider are local (loopback HTTP with private addresses allowed for the benchmark only; the in-memory test mail provider). A remote endpoint or SMTP relay adds network time, bounded per attempt by DELIVERY_TIMEOUT_MS.
+
+```sh
+npm run benchmark:analytics          # ABENCH_CLAIMS=5000 ABENCH_ITER=3 ABENCH_BURST=10 for a quick run
+```
+
 ## Native client
 
-<!-- From test-results/native-perf.json (`npm run test:e2e`, 2026-10-20T00:44:06.010Z). -->
+<!-- From test-results/native-perf.json (`npm run test:e2e`, 2026-10-20T02:51:00.896Z). -->
 
 Release build of the GPUI client on the same machine, **without a GPU**: Xvfb + Mesa lavapipe (software Vulkan), window 1440×920. Timings are taken from `on_next_frame`, i.e. after GPUI has actually drawn. Software rasterization dominates frame time and scales with window area (the same scroll at 640×400 ran at about 60 fps), so these are pessimistic for a desktop with a GPU.
 
 | Measurement | Result |
 |---|---|
-| Process start → first frame | 130.59 ms (spawn → ready event 143 ms) |
-| 5,000-row result: request → first frame with rows | 256.74 ms (includes the API round trip) |
-| Scrolling 5,000 rows, frame interval p50 / p95 / max | 47.98 / 48.09 / 64.03 ms (23.16 fps mean, n=150) |
-| Typing in the SQL editor while a query runs | 63.72 / 79.68 / 95.78 ms (14.69 fps mean, n=120) |
-| Typing in the SQL editor, idle | 47.7 / 50.62 / 63.73 ms (20.78 fps mean, n=120) |
+| Process start → first frame | 276.17 ms (spawn → ready event 284 ms) |
+| 5,000-row result: request → first frame with rows | 228.19 ms (includes the API round trip) |
+| Scrolling 5,000 rows, frame interval p50 / p95 / max | 64.01 / 95.94 / 112.05 ms (14.7 fps mean, n=150) |
+| Typing in the SQL editor while a query runs | 79.65 / 127.68 / 143.67 ms (11.81 fps mean, n=120) |
+| Typing in the SQL editor, idle | 79.7 / 95.85 / 127.69 ms (11.61 fps mean, n=120) |
 
-- The UI thread is never blocked by a running query: API calls run on the background executor, and while a long-running query (a three-way cross join over claims) was executing, the longest frame interval was 95.78 ms (the e2e test fails above 1,000 ms). Frames are slower than idle typing (p50 63.72 vs 47.7 ms) because the API, PostgreSQL and the software rasterizer share the machine's CPUs during the query.
+- The UI thread is never blocked by a running query: API calls run on the background executor, and while a long-running query (a three-way cross join over claims) was executing, the longest frame interval was 143.67 ms (the e2e test fails above 1,000 ms). Frames are slower than idle typing (p50 79.65 vs 79.7 ms) because the API, PostgreSQL and the software rasterizer share the machine's CPUs during the query.
 - The grid is virtualized: only visible rows are laid out, so scroll cost does not grow with the result size.

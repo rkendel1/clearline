@@ -4,6 +4,7 @@
 //   CLEARLINE_URL=http://host:8080 npm run demo
 //   npm run demo -- --with-migration   (also publishes northwind v2 for approval in the native client)
 //   npm run demo -- --skip-query-demo  (leave out the query workspace and field policy demonstration)
+//   npm run demo -- --skip-analytics-demo (leave out saved queries, schedules, analyses and delivery)
 //
 // It loads the reference dataset (valid rows, defects, corrections, an exact
 // redelivery, a non-reconciling batch, two tenants), waits for processing, then
@@ -14,6 +15,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadReferenceDataset, type SubmitApi } from '../synthetic/reference-dataset.js';
 import { DEV_TOKENS } from './seed.js';
+import { analyticsClaims, ANOMALY_DATE } from '../synthetic/analytics-dataset.js';
+import { nwMembers, toCsv, NW_CLAIM_COLUMNS } from '../synthetic/generator.js';
 
 const BASE = (process.env.CLEARLINE_URL ?? 'http://localhost:8080').replace(/\/$/, '');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..').replace(/[\\/]dist$/, '');
@@ -110,6 +113,7 @@ if (process.argv.includes('--with-migration')) {
 }
 
 if (!process.argv.includes('--skip-query-demo')) mismatches += await queryDemo();
+if (!process.argv.includes('--skip-analytics-demo')) mismatches += await analyticsDemo();
 
 line(`\nNative client: npm run native:run -- --url ${process.env.PUBLIC_URL ?? BASE}  (sign in with ${DEV_TOKENS.northwind.operator}, ${DEV_TOKENS.northwind.reporter}, ${DEV_TOKENS.northwind.steward} or ${DEV_TOKENS.northwind.admin}).`);
 line(mismatches === 0 ? 'Result: every metric and every checked query result matches ground truth.' : `Result: ${mismatches} figure(s) differ from ground truth.`);
@@ -191,3 +195,102 @@ async function queryDemo(): Promise<number> {
   line(`   SSN values present in the audit trail: ${leaked} of ${originals.length} ${leaked ? 'LEAK' : '(none: payloads carry ids, hashes, counts and column names only)'}`);
   return bad;
 }
+
+// ------------------------------------------------------------------ saved analytics
+// Save a natural-language-generated query, run it and check it, schedule it, add anomaly
+// detection and forecasting, run the schedule and inspect insights, deliver a notification and a
+// summary, read the audit trail, and show the safe failure after the identity is revoked.
+// Offline and deterministic: deterministic SQL provider, built-in algorithms, file email outbox.
+async function analyticsDemo(): Promise<number> {
+  let bad = 0;
+  const T = '/api/v1/tenants/northwind';
+  const as = (token: string) => ({
+    get: async (u: string) => (await call(token, 'GET', `${T}${u}`)),
+    post: async (u: string, b: unknown = {}) => (await call(token, 'POST', `${T}${u}`, b)),
+  });
+  const reporter = as(DEV_TOKENS.northwind.reporter);
+  const admin = as(DEV_TOKENS.northwind.admin);
+  const must = (r: { status: number; body: any }, what: string) => { if (r.status >= 300) throw new Error(`${what}: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 400)}`); return r.body; };
+  const waitRun = async (who: ReturnType<typeof as>, id: string) => {
+    for (let i = 0; i < 240; i++) {
+      const r = must(await who.get(`/analytics/runs/${id}`), 'run');
+      if (!['queued', 'running', 'delivering'].includes(r.run.status)) return r;
+      await new Promise((res) => setTimeout(res, 500));
+    }
+    throw new Error('the run did not finish within 120 s — is the worker (with its scheduler) running?');
+  };
+  line('\n=== Saved analytics: saved queries, schedules, ML analyses and delivery ===');
+  const { rows, truth } = analyticsClaims(nwMembers(150, 1).map((m) => m.MBR_ID));
+  must(await submitter(DEV_TOKENS.northwind.operator).csv('northwind', 'nw_medical_claims_csv', toCsv(rows as never, NW_CLAIM_COLUMNS)), 'analytics claims');
+  await waitIdle('northwind', DEV_TOKENS.northwind.operator);
+  line(`Loaded ${truth.claims} more claims over ${truth.from}..${truth.to} (weekly pattern; one unusual day planted on ${ANOMALY_DATE}).`);
+
+  // 1. Save a natural-language-generated query.
+  const question = 'Daily paid claim amounts, claim counts and average payment for the last 180 days.';
+  const prop = must(await reporter.post('/queries/proposals', { question }), 'proposal');
+  const saved = must(await reporter.post('/saved-queries', { name: 'Daily paid claims', proposal_id: prop.id, purpose: 'Alert on unusual payment days', category: 'finance', tags: ['claims', 'daily'] }), 'save');
+  line(`\n1. "${question}"\n   -> deterministic provider proposal ${prop.id.slice(0, 8)} (validated=${prop.validation.ok}), saved as "${saved.name}" v${saved.version}; output ${saved.current.output_schema.map((c: any) => `${c.name}:${c.type}`).join(', ')}`);
+
+  // 2. Run it and check the result against an independently written query.
+  const ex = must(await reporter.post(`/saved-queries/${saved.id}/execute`, { mode: 'run' }), 'execute');
+  const day = ex.rows.find((r: unknown[]) => r[0] === ANOMALY_DATE);
+  const ind = must(await reporter.post('/queries/proposals', { sql: `SELECT sum(paid_amount) AS paid FROM claim WHERE service_date = '${ANOMALY_DATE}' AND _trust_status = 'trusted'` }), 'independent');
+  const indRun = must(await reporter.post(`/queries/proposals/${ind.id}/execute`, { mode: 'run' }), 'independent run');
+  const ok2 = day && String(day[1]) === String(indRun.rows[0][0]);
+  if (!ok2) bad++;
+  line(`2. Ran it: ${ex.row_count} days in ${ex.duration_ms} ms; ${ANOMALY_DATE} paid ${day?.[1]} vs independent SQL ${indRun.rows[0][0]} ${ok2 ? 'match' : 'MISMATCH'}`);
+
+  // 3. Configure recurring execution with destinations.
+  const inbox = must(await admin.post('/analytics/destinations', { name: 'Analyst inbox', kind: 'in_app', config: { recipients: ['$owner'] }, notify_on: 'always' }), 'inbox');
+  const mail = must(await admin.post('/analytics/destinations', { name: 'Finance email', kind: 'email', config: { to: ['finance@example.org'] }, notify_on: 'anomaly', content: 'summary_with_csv' }), 'email');
+  const sched = must(await reporter.post('/analytics/schedules', { query_id: saved.id, name: 'Daily 06:00 New York', recurrence: { frequency: 'daily', at: '06:00' }, start_local: '2026-11-02T06:00',
+    timezone: 'America/New_York', run_as_role: 'reporter', destination_ids: [inbox.id, mail.id] }), 'schedule');
+  const pv = must(await reporter.post('/analytics/schedules/preview', { recurrence: { frequency: 'daily', at: '06:00' }, start_local: '2026-10-31T06:00', timezone: 'America/New_York', count: 3 }), 'preview');
+  line(`3. Schedule "${sched.name}": ${sched.description}, runs as ${sched.run_as.actor} (${sched.run_as.role}), next ${sched.next_run_at}; across the 1 Nov DST change: ${pv.next.join(', ')}`);
+
+  // 4. Enable anomaly detection and forecasting (a new version). The version also replaces
+  // "the last 180 days" by typed date parameters whose defaults are the generated window, so
+  // the demonstration gives the same result whatever today's date is.
+  const pinned = saved.current.sql.replace('c.service_date >= current_date - 180', 'c.service_date >= :start AND c.service_date <= :end');
+  if (pinned === saved.current.sql) throw new Error('unexpected SQL from the deterministic provider');
+  const v2 = must(await reporter.post(`/saved-queries/${saved.id}/versions`, { change_note: 'Typed date window; anomaly detection and a two-week forecast', sql: pinned,
+    parameters: [{ name: 'start', type: 'date', label: 'From', default: '2026-04-04' }, { name: 'end', type: 'date', label: 'To', default: '2026-09-30' }], analyses: [
+    { type: 'anomaly', key: 'daily-anomalies', label: 'Daily anomalies', algorithm: 'anomaly.rolling_mad', time_column: 'day', metrics: ['paid', 'claims'], grain: 'day', period: 7 },
+    { type: 'forecast', key: 'daily-forecast', label: 'Two-week forecast', algorithm: 'forecast.auto', time_column: 'day', metric: 'paid', grain: 'day', horizon: 14, period: 7, missing: 'zero' },
+  ] }), 'version');
+  line(`4. Version ${v2.version}: parameters ${v2.current.parameters.map((x: any) => `:${x.name} ${x.type} = ${x.default}`).join(', ')}; analyses ${v2.current.analyses.map((a: any) => `${a.key} (${a.algorithm})`).join(', ')}`);
+
+  // 5. Run the schedule now (same identity and destinations) and inspect its insights.
+  const q5 = must(await reporter.post(`/analytics/schedules/${sched.id}/run`), 'run now');
+  const run = await waitRun(reporter, q5.run_id);
+  const top = run.insights.find((i: any) => i.kind === 'anomaly' && i.title.includes(ANOMALY_DATE));
+  const ok5 = !!top;
+  if (!ok5) bad++;
+  line(`5. Run ${run.run.id.slice(0, 8)}: ${run.run.status} (query ${run.run.query_status}, analyses ${run.run.analysis_status}, delivery ${run.run.delivery_status}); query ${run.run.timings.query_ms} ms, analyses ${run.run.timings.analysis_ms} ms`);
+  for (const i of run.insights.slice(0, 4)) line(`   [${i.severity}] ${i.title}\n          ${i.body.slice(0, 260)}${i.body.length > 260 ? '…' : ''}`);
+  line(`   planted anomaly on ${ANOMALY_DATE} detected: ${ok5 ? 'yes' : 'NO'}`);
+
+  // 6. Notification and result summary.
+  const notes = must(await reporter.get('/notifications'), 'notifications').items.filter((n: any) => n.run_id === run.run.id);
+  line(`6. Deliveries: ${run.deliveries.map((d: any) => `${d.destination} (${d.kind}) ${d.status}${d.last_error ? ` — ${d.last_error}` : ''}`).join('; ')}`);
+  for (const n of notes) line(`   in-app for the analyst: [${n.kind}] ${n.title}`);
+
+  // 7. Audit trail of the run.
+  const audit = must(await admin.get('/audit?limit=500'), 'audit').filter((e: any) => e.correlation_id === run.run.id || e.resource === `run:${run.run.id}` || e.details?.run_id === run.run.id);
+  line(`7. Audit trail for the run: ${[...new Set(audit.reverse().map((e: any) => `${e.action}:${e.outcome}`))].join(' -> ')}`);
+
+  // 8. Revoke the execution identity: the next run is denied and nothing is delivered.
+  const tok = must(await admin.post('/tokens', { name: 'analyst-demo', role: 'reporter' }), 'token');
+  const dana = as(tok.token);
+  const dq = must(await dana.post('/saved-queries', { name: 'Daily paid (analyst-demo)', proposal_id: must(await dana.post('/queries/proposals', { question }), 'p').id }), 'save');
+  const ds = must(await dana.post('/analytics/schedules', { query_id: dq.id, recurrence: { frequency: 'daily', at: '07:00' }, start_local: '2026-11-02T07:00', timezone: 'UTC', run_as_role: 'reporter', destination_ids: [inbox.id] }), 'schedule');
+  const first = await waitRun(dana, must(await dana.post(`/analytics/schedules/${ds.id}/run`), 'run').run_id);
+  must(await admin.post('/tokens/analyst-demo/revoke'), 'revoke');
+  const after = await waitRun(admin, must(await admin.post(`/analytics/schedules/${ds.id}/run`), 'run').run_id);
+  const ok8 = first.run.status === 'succeeded' && after.run.status === 'denied' && after.run.error_code === 'identity_revoked';
+  if (!ok8) bad++;
+  const att = must(await admin.get(`/analytics/schedules/${ds.id}`), 'schedule').attention;
+  line(`8. Schedule of token "analyst-demo": ran (${first.run.status}); token revoked; next run ${after.run.status} (${after.run.failure_class}: ${after.run.error_code}), query executed: ${after.run.execution_id ? 'yes' : 'no'}, deliveries: ${after.deliveries.length ? after.deliveries.map((d: any) => `${d.status}${d.last_error_code ? ` (${d.last_error_code})` : ''}`).join(', ') : 'none'}\n   schedule attention: ${att}`);
+  return bad;
+}
+

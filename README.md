@@ -6,9 +6,11 @@ Clearline ingests eligibility, claims, pharmacy and plan data from independent s
 
 > Data contracts define the meaning of the data; the platform enforces the contracts; execution evidence establishes what actually happened.
 
-The tests check more than that data moved. Every declared business metric and the operations totals are compared with independent SQL, the generator's own answers and what the native client displays. A batch that ran is never confused with one that can be trusted, and failures leave no partial effects. A mutation suite plants 22 realistic defects and confirms the tests catch every one.
+The tests check more than that data moved. Every declared business metric and the operations totals are compared with independent SQL, the generator's own answers and what the native client displays. A batch that ran is never confused with one that can be trusted, and failures leave no partial effects. A mutation suite plants 31 realistic defects and confirms the tests catch every one.
 
 **Query workspace.** Ask a question in plain language; a model provider (deterministic rules by default, Anthropic optionally) proposes SQL, which is treated as **untrusted**. The server validates it structurally against the role's field policy, shows exactly what will run, and executes it only on explicit request, read-only, as a per-tenant, per-role database role that can read only what the policy grants. Restricted fields have no route into results: not through aliases, joins, subqueries, aggregates, ordering, previews, history, exports or error messages. Field sensitivity and redaction are managed by stewards and administrators and enforced by the server on every surface. See [docs/query-workspace.md](docs/query-workspace.md).
+
+**Saved analytics.** A validated query can be saved as a versioned asset with typed parameters, scheduled (once, hourly, daily, weekly, monthly, in any time zone, with explicit daylight-saving rules) and analysed after each run by deterministic, offline algorithms: robust anomaly detection, backtested forecasts with empirical intervals, outlier ranking and seeded k-means segmentation. Evidence-backed insights are delivered in-app, by email, to signed webhooks (with SSRF protection) or as expiring exports. The scheduler is durable and runs in the worker. Saving and scheduling grant nothing: every run and every delivery is re-authorized under the current policy and an explicit execution identity. See [docs/saved-analytics.md](docs/saved-analytics.md).
 
 ![Native client: a natural-language question, the validated proposal and the role's catalog](docs/demo/query-workspace.png)
 
@@ -64,11 +66,12 @@ Tests create and drop their own databases (`clearline_test`, …). Set `PG_ADMIN
 npm run typecheck
 npm run test:unit          # transforms, decimal math, contract validation, migration planning, engine, adapters, reconciliation
 npm run test:integration   # HTTP API: health, roles, platform-admin limits, rejection, failure+replay, quarantine, erasure, retention, tokens, audit, scope guard
-npm run test:scenarios     # A–N against a real database and worker; writes test-results/evidence.md
+npm run test:scenarios     # A–T against a real database and worker; writes test-results/evidence.md
 npm run native:test        # Rust client unit tests
-npm run native:build && npm run test:e2e   # native client under X (Xvfb if DISPLAY is unset): Scenario J (native), O, contract test, measurements
-npm run test:mutation      # plant 22 defects in a temp copy; every one must be caught
+npm run native:build && npm run test:e2e   # native client under X (Xvfb if DISPLAY is unset): Scenario J (native), O, U, contract tests, measurements
+npm run test:mutation      # plant 31 defects in a temp copy; every one must be caught
 npm run benchmark:query    # query workspace latency, limits and concurrency
+npm run benchmark:analytics # algorithms (small/medium/large), end-to-end runs with deliveries, scheduler burst
 ```
 
 | Scenario | Test | What is verified |
@@ -88,6 +91,12 @@ npm run benchmark:query    # query workspace latency, limits and concurrency
 | M Sensitivity and redaction | `m-sensitivity-redaction.test.ts` | a steward marks a field sensitive: every surface redacts it at once (SQL and TypeScript masking agree); stewards cannot widen; versioned and audited |
 | N Isolation and inference | `n-tenant-isolation-inference.test.ts` | 24 inference attacks rejected; with the validator bypassed the database still refuses writes, other tenants, ungranted columns and `RESET ROLE`; timeouts, cancellation, cost and concurrency limits |
 | O Native workflow | `test/e2e/native.test.ts` | in the real GPUI window: NL question, edit, run, restricted fields, an administrator's sensitivity change, redaction in workspace, records and lineage |
+| P Saved queries | `p-saved-queries.test.ts` | create from a proposal or SQL, typed parameters bound (invalid values rejected), versions kept by runs, schema change flags analyses, duplicate, share, archive; saving grants nothing |
+| Q Scheduling | `q-scheduling.test.ts` | due-time runs exactly once with racing schedulers; interrupted run recovered; pause/resume/cancel; time zones and DST; revoked identity denied; failed query never reported delivered; scheduler in a worker subprocess survives restart (controllable clock) |
+| R Delivery | `r-delivery.test.ts` | in-app, email over SMTP, signed webhooks, exports; retries, timeouts, permanent failure, duplicate protection, manual retry without re-query; results that became restricted are never delivered; interrupted delivery recovered |
+| S ML analyses | `s-ml-analyses.test.ts` | planted anomaly found with grounded evidence; forecast vs held-out weeks; seeded outliers ranked first; known clusters recovered; sensitive inputs and insufficient data refused; model text cannot override computed values |
+| T Analytics end to end | `t-analytics-end-to-end.test.ts` | save → schedule daily → anomaly → insight → notification; revoke → next run denied, nothing exposed; webhook SSRF targets refused; tenant isolation of all analytics objects |
+| U Native saved analytics | `test/e2e/native.test.ts` | in the real GPUI window: save from the workspace, version with parameters, analysis builder, schedule editor with DST preview, run, insights and charts, notification opens the run, destinations and test delivery |
 
 The latest recorded results are in [`docs/test-results.md`](docs/test-results.md) and `test-results/`.
 
@@ -97,6 +106,7 @@ The latest recorded results are in [`docs/test-results.md`](docs/test-results.md
 |---|---|
 | [Architecture](docs/architecture.md) | Components, diagram, module boundaries and dependency direction, batch lifecycle, transaction boundaries |
 | [Query workspace and field policy](docs/query-workspace.md) | Proposal lifecycle, provider abstraction, authorization semantics, validation rules and limits, database enforcement, redaction, audit events |
+| [Saved analytics](docs/saved-analytics.md) | Saved-query lifecycle and versions, schedules and recurrence, scheduler and recovery, execution identity, analyses and insights, delivery and its security, limits, monitoring |
 | [Native client](native/README.md) | GPUI prerequisites per platform, build, run, behaviour, tests, measurements |
 | [Contracts](docs/contracts.md) | Contract format, supported types/transforms/conditions, processing semantics, compatibility rules, migrations |
 | [Data dictionary](docs/data-dictionary.md) | Every platform table, system column and canonical field (generated) |
@@ -105,7 +115,7 @@ The latest recorded results are in [`docs/test-results.md`](docs/test-results.md
 | [Threat model](docs/threat-model.md) | Privacy, tenant isolation, model output, inference and query abuse: assets, threats, controls, evidence, gaps, HIPAA delta |
 | [Runbook](docs/runbook.md) | Failure handling and recovery, backup/restore, retention, erasure |
 | [Deployment](docs/deployment.md) | Configuration reference, secrets management, cloud path |
-| [Benchmark](docs/benchmark.md) | Measured ingestion throughput, query latency and limits, native client rendering, with environment and method |
+| [Benchmark](docs/benchmark.md) | Measured ingestion throughput, query latency and limits, analysis and run latency, native client rendering, with environment and method |
 | [Scale-out design](docs/scale-out.md) | When a queue, distributed engine, warehouse or orchestrator becomes justified, and at what cost |
 | [ADRs](docs/adr/README.md) | Key decisions and trade-offs |
 | [Production readiness](docs/production-readiness.md) | Tested / implemented / unverified / missing |
@@ -123,6 +133,9 @@ src/
   reporting/       reports, extracts, lineage, the single SQL compiler for metrics/filters
   policy/          field policies: access levels, sensitivity, redaction (the one resolver every surface uses)
   query/           role catalog, SQL validator, model providers, query surface (views, roles, grants), execution
+  analytics/       saved queries and versions, parameters, recurrence, schedules, execution identity, scheduler, runs
+  analysis/        deterministic anomaly, forecast, outlier and clustering algorithms; insights; optional grounded narrator
+  delivery/        destinations, re-authorization, in-app inbox, SMTP email, signed webhooks + SSRF guard, exports
   control/         tokens and roles, tenants, audit, retention and erasure
   platform/        config, database scopes, migrations, logging, metrics
 contracts/         JSON Schema + tenant contracts (northwind v1/v2/v2-unsafe, bluefin v1)
@@ -130,7 +143,7 @@ db/migrations/     versioned platform schema
 native/            Rust/GPUI desktop client (clearline-client: API; clearline-desktop: the application)
 synthetic/         deterministic synthetic data generator and the reference dataset with ground truth
 scripts/           seed, demo, benchmarks, mutation check, doc generators
-test/              unit, integration, scenarios (A–N), e2e (native client, Scenario O)
+test/              unit, integration, scenarios (A–T), e2e (native client, Scenarios O and U)
 docs/              everything above
 ```
 

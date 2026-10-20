@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-20T00:42:03.481Z",
-  "mutations": 22,
-  "killed": 22,
+  "generated_at": "2026-10-20T02:34:06.099Z",
+  "mutations": 31,
+  "killed": 31,
   "survived": 0,
   "results": [
     {
@@ -17,7 +17,7 @@
         "Scenario D: invalid records are quarantined with actionable errors and excluded from metrics",
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 5
+      "seconds": 6
     },
     {
       "id": "route-tenant-check-removed",
@@ -30,7 +30,7 @@
       "failing_tests": [
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
       ],
-      "seconds": 4
+      "seconds": 3
     },
     {
       "id": "data-layer-tenant-guard-removed",
@@ -43,7 +43,7 @@
       "failing_tests": [
         "data layer refuses a tenant transaction that does not match the request principal (independent of route checks)"
       ],
-      "seconds": 4
+      "seconds": 3
     },
     {
       "id": "idempotency-removed",
@@ -71,7 +71,7 @@
         "Scenario A: valid batch flows from source row to metric and extract",
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
       ],
-      "seconds": 7
+      "seconds": 6
     },
     {
       "id": "control-count-ignored",
@@ -97,7 +97,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 4
+      "seconds": 3
     },
     {
       "id": "trusted-view-uses-current-only",
@@ -149,7 +149,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 5
+      "seconds": 4
     },
     {
       "id": "queued-batch-uses-superseded-contract",
@@ -162,7 +162,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 5
+      "seconds": 4
     },
     {
       "id": "dataset-checks-ignored-by-metrics",
@@ -175,7 +175,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 4
+      "seconds": 3
     },
     {
       "id": "audit-floor-removed",
@@ -188,7 +188,7 @@
       "failing_tests": [
         "audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor"
       ],
-      "seconds": 4
+      "seconds": 3
     },
     {
       "id": "validator-restricted-check-removed",
@@ -206,7 +206,7 @@
         "masked fields are returned only in redacted form, computed by the database",
         "relationship joins between restricted keys are allowed only along declared relationships"
       ],
-      "seconds": 9
+      "seconds": 8
     },
     {
       "id": "mask-rewrite-skipped",
@@ -221,7 +221,7 @@
         "Scenario L: a restricted field cannot be obtained by a role that may not see it",
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
       ],
-      "seconds": 8
+      "seconds": 7
     },
     {
       "id": "hidden-columns-granted",
@@ -234,7 +234,7 @@
       "failing_tests": [
         "Scenario L: a restricted field cannot be obtained by a role that may not see it"
       ],
-      "seconds": 5
+      "seconds": 4
     },
     {
       "id": "steward-may-widen",
@@ -247,7 +247,7 @@
       "failing_tests": [
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
       ],
-      "seconds": 6
+      "seconds": 4
     },
     {
       "id": "sensitivity-does-not-mask",
@@ -305,6 +305,136 @@
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
       ],
       "seconds": 7
+    },
+    {
+      "id": "revoked-identity-still-runs",
+      "protects": "a schedule whose execution identity was revoked does not run",
+      "file": "src/analytics/identity.ts",
+      "tests": [
+        "test/scenarios/t-analytics-end-to-end.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed"
+      ],
+      "seconds": 4
+    },
+    {
+      "id": "run-as-role-not-delegation-checked",
+      "protects": "a schedule cannot run with a role its creator may not delegate",
+      "file": "src/analytics/schedules.ts",
+      "tests": [
+        "test/scenarios/q-scheduling.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario Q4: lost authorization blocks the next run; a failed query is never reported as delivered"
+      ],
+      "seconds": 7
+    },
+    {
+      "id": "delivery-not-reauthorized",
+      "protects": "results that became restricted after the query ran are not delivered",
+      "file": "src/delivery/deliver.ts",
+      "tests": [
+        "test/scenarios/r-delivery.test.ts",
+        "test/scenarios/t-analytics-end-to-end.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered",
+        "Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed"
+      ],
+      "seconds": 9
+    },
+    {
+      "id": "webhook-private-targets-allowed",
+      "protects": "webhooks cannot target private, loopback or link-local addresses",
+      "file": "src/delivery/ssrf.ts",
+      "tests": [
+        "test/unit/delivery.test.ts",
+        "test/scenarios/t-analytics-end-to-end.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario T2: webhook destinations cannot target private, loopback, link-local or credentialed endpoints",
+        "SSRF: every resolved address is checked (a rebinding-style answer mixing public and private is refused)",
+        "webhook: the connection is pinned to the checked address (no second DNS lookup), redirects are not followed, the signature verifies"
+      ],
+      "seconds": 300
+    },
+    {
+      "id": "failed-delivery-reported-success",
+      "protects": "a successful query followed by a failed delivery is not reported as delivered",
+      "file": "src/delivery/deliver.ts",
+      "tests": [
+        "test/scenarios/r-delivery.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query",
+        "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered"
+      ],
+      "seconds": 6
+    },
+    {
+      "id": "sensitive-feature-allowed",
+      "protects": "fields derived from sensitive data are not analysis inputs",
+      "file": "src/analysis/config.ts",
+      "tests": [
+        "test/unit/analysis.test.ts",
+        "test/scenarios/s-ml-analyses.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario S4: sensitive or redacted fields cannot enter an analysis; insufficient data is explicit",
+        "configuration: redacted, sensitive, non-numeric and missing columns are refused; schema drift is stale"
+      ],
+      "seconds": 5
+    },
+    {
+      "id": "narrative-not-grounded",
+      "protects": "model summaries are accepted only when grounded in computed evidence",
+      "file": "src/analysis/narrate.ts",
+      "tests": [
+        "test/unit/analysis.test.ts",
+        "test/scenarios/s-ml-analyses.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario S5: model-written summaries are checked against computed evidence and never replace it",
+        "model summaries cannot override computed metrics: ungrounded numbers and causal claims are rejected"
+      ],
+      "seconds": 5
+    },
+    {
+      "id": "run-results-not-remasked",
+      "protects": "saved run results are re-masked for a viewer whose access is narrower now",
+      "file": "src/analytics/runs.ts",
+      "tests": [
+        "test/scenarios/r-delivery.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered"
+      ],
+      "seconds": 5
+    },
+    {
+      "id": "notifications-not-recipient-scoped",
+      "protects": "users see only their own notifications",
+      "file": "src/delivery/inbox.ts",
+      "tests": [
+        "test/scenarios/r-delivery.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario R1: one run delivered to in-app, email (with CSV), a signed webhook (after transient failures) and an export",
+        "Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query",
+        "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered",
+        "Scenario R4: test deliveries report exactly what happened"
+      ],
+      "seconds": 4
     }
   ]
 }

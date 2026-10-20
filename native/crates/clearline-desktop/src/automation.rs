@@ -137,6 +137,7 @@ async fn run(shell: &Entity<Shell>, cmd: &Value, cx: &mut AsyncWindowContext) ->
                 "query.cancel" => with_window!(|_, cx| q.update(cx, |q, cx| q.cancel(cx))),
                 "query.export" => with_window!(|_, cx| q.update(cx, |q, cx| q.export(cx))),
                 "query.copy_row" => { copied = with_window!(|_, cx| q.update(cx, |q, cx| q.copy_row(cx))); }
+                "query.save" => { let n = s(cmd, "name")?.to_string(); with_window!(|window, cx| q.update(cx, |q, cx| { q.save_name.update(cx, |i, cx| i.set_value(n.clone(), window, cx)); q.save_as(cx); })) }
                 _ => return Err(format!("unknown command {c}")),
             }
             wait_idle(shell, cx, timeout).await?;
@@ -144,7 +145,7 @@ async fn run(shell: &Entity<Shell>, cmd: &Value, cx: &mut AsyncWindowContext) ->
             if let Some(t) = copied { snap["copied"] = json!(t); }
             Ok(snap)
         }
-        c if c.starts_with("fields.") || c.starts_with("records.") || c.starts_with("lineage.") || c.starts_with("history.") => {
+        c if ["fields.", "records.", "lineage.", "history.", "library.", "schedule.", "analysis.", "run.", "runs.", "notifications.", "destinations."].iter().any(|p| c.starts_with(p)) => {
             crate::views::automation_command(shell, c, cmd, cx).await?;
             wait_idle(shell, cx, timeout).await?;
             snapshot(shell, cx)

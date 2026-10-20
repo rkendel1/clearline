@@ -93,6 +93,34 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 | Concurrency limits across several API replicas | **Missing** | In-memory per process (threat model) |
 | Small-cell suppression of aggregates | **Missing** | Threat model |
 
+## Saved analytics, scheduling, analysis and delivery
+
+| Capability | Status | Evidence / note |
+|---|---|---|
+| Saved queries: versions (append-only), metadata, typed parameters bound safely, duplicate, disable/archive, favorites, sharing; runs keep their exact version | Tested | Scenario P; Rust contract test |
+| Saving is not a grant: SQL re-validated for the run role at every run; withheld from viewers who may not use it | Tested † | Scenarios P, Q4, T1; mutations `revoked-identity-still-runs`, `run-as-role-not-delegation-checked` |
+| Schema change flags dependent analyses (`needs_revalidation` / `stale_schema`) | Tested | Scenario P (column renamed → `needs_revalidation`, run records `stale_schema`) |
+| Durable schedules (once, hourly, daily, weekly, monthly; time zone; start/end; pause/resume/cancel; run now) with explicit DST rules | Tested | Scenario Q3, unit tests (recurrence) |
+| Each occurrence runs exactly once, also with racing schedulers; missed occurrences coalesced | Tested | Scenario Q1, Q2 |
+| Scheduler in the worker, independent of any client; survives restart; interrupted runs and deliveries recovered | Tested | Scenarios Q2, Q5 (worker subprocess killed and restarted), R5 |
+| Bounded concurrency (per process and per tenant), timeouts, retries with exponential backoff, failure classes for query / analysis / delivery | Tested | Scenarios Q4, R2; [benchmark.md](benchmark.md) burst |
+| A failed delivery never reports the run as delivered; manual delivery retry without re-running the query | Tested † | Scenarios Q4, R2; mutation `failed-delivery-reported-success` |
+| In-app notifications, recipient-scoped, status-only for recipients without access | Tested † | Scenarios R1, T1; mutation `notifications-not-recipient-scoped` |
+| Email over SMTP (STARTTLS / implicit TLS), summary and CSV attachment | Tested (local SMTP receiver) | Scenario R1. **No real mail relay was used.** |
+| Signed HTTPS webhooks; SSRF guard (address classes, every resolved address, pinned connection, no redirects); secrets by reference | Tested † | Scenarios R1, T2; unit tests; mutation `webhook-private-targets-allowed`. Delivered to a loopback receiver only. |
+| Expiring CSV exports, downloads re-authorized and audited | Tested | Scenarios R1, R3 |
+| Re-authorization before delivery; results that became restricted are not sent | Tested † | Scenario R3; mutation `delivery-not-reauthorized` |
+| Anomaly detection (rolling MAD with seasonality; seasonal decomposition) | Tested | Scenario S1, unit tests (planted spike found; ordinary weekly variation not flagged) |
+| Forecasting (naive, seasonal naive, drift, Holt; auto selection by rolling-origin backtest; empirical intervals) | Tested | Scenario S2 (held-out weeks), unit tests |
+| Outlier detection (robust z / RMS distance within groups, contributions) | Tested | Scenario S3 (seeded claims ranked first) |
+| Segmentation (seeded k-means++, silhouette, unnamed until reviewed) | Tested | Scenario S3 (three known claim profiles recovered), unit tests (determinism), native run view (naming) |
+| Sensitive or redacted fields cannot enter analyses | Tested † | Scenario S4; mutation `sensitive-feature-allowed` |
+| Optional model-written summaries grounded in evidence | Tested with a stub provider | Scenario S5; mutation `narrative-not-grounded`. **Live provider Unverified** (no `ANTHROPIC_WORKSPACE_ID`). |
+| Native library, schedule editor, analysis builder, run view with charts, run history, notifications, destinations | Tested | Native Scenario U (screenshots 15–22) |
+| Service identities for schedules (not tied to a person's token) | **Missing** | ADR 0014 |
+| Analysis sandboxing (separate process/memory limits) | **Missing** | Caps and a memory estimate only |
+| DKIM, OAuth SMTP, object storage for exports | **Missing** | [saved-analytics.md](saved-analytics.md#8-known-limitations) |
+
 ## Native client
 
 | Capability | Status | Evidence / note |

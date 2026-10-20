@@ -173,7 +173,7 @@ function renderReport(r: any): string {
     `- Failure rate: ${p.failed_batches} of ${p.batches} parallel batches and 0 of ${r.single_worker.length} single-worker batches failed. Deliberately invalid rows were quarantined exactly as expected in every batch.`, '',
     '## Reproduce', '', '```sh', 'BENCH_PUBLISH=1 npm run benchmark     # needs PG_ADMIN_URL able to create databases', 'BENCH_RENDER_ONLY=1 npm run benchmark  # re-render this file from test-results/*.json', '# smaller: BENCH_SIZES=1000,5000 BENCH_WORKERS=2 BENCH_PARALLEL_BATCHES=4 BENCH_PARALLEL_ROWS=2000 npm run benchmark', '```', '',
     'CI runs a small smoke configuration on every pull request to keep the script working. CI timings are not published, because shared runners are too noisy to compare.', '',
-    ...queryReport(), ...nativeReport(),
+    ...queryReport(), ...analyticsReport(), ...nativeReport(),
   ].join('\n');
 }
 
@@ -210,6 +210,45 @@ function queryReport(): string[] {
     '- Requests over the concurrency limit are refused immediately with `429 query_concurrency_limit` rather than queued, so a burst cannot build an unbounded backlog.',
     '- A live model provider adds its own latency to proposals (not measured here: the run uses the deterministic provider so it is reproducible and needs no credentials).', '',
     '```sh', 'npm run benchmark:query                     # QBENCH_CLAIMS=20000 QBENCH_ITER=50 for a quicker run', '```', '',
+  ];
+}
+function analyticsReport(): string[] {
+  const a = readResult('benchmark-analytics.json');
+  if (!a) return [];
+  const fmt = (n: number) => n.toLocaleString('en-US');
+  const NAMES: Record<string, string> = { small: 'Small', medium: 'Medium', large: 'Large' };
+  const mlRows = Object.entries(a.ml).flatMap(([alg, sizes]: [string, any]) => Object.entries(sizes).map(([size, x]: [string, any]) =>
+    `| \`${alg}\` | ${NAMES[size]}: ${x.input} | ${x.total.n} | ${x.total.p50_ms} | ${x.total.p95_ms} | ${x.total.max_ms} | ${x.prepare_p50_ms} / ${x.algorithm_p50_ms} |`));
+  const P = ['queue_wait', 'identity', 'query', 'snapshot', 'analyses', 'delivery', 'wall'];
+  const runRows = Object.entries(a.runs).map(([size, r]: [string, any]) =>
+    `| ${NAMES[size]}: ${r.query} | ${fmt(r.rows)} | ${r.analyses.map((x: string) => `\`${x}\``).join(', ')} | ${P.map((k) => r.phases[k].p50_ms).join(' | ')} | ${r.phases.wall.p95_ms} |`);
+  const t = a.throughput;
+  return [
+    '## Saved analytics', '',
+    `<!-- From test-results/benchmark-analytics.json (\`npm run benchmark:analytics\`, ${a.generated_at}). -->`, '',
+    `Same machine. ${fmt(a.dataset.claims)} current claims (the 180-day analytics dataset plus ${fmt(a.dataset.extra_random_claims)} random claims) loaded through the API. Defaults: ANALYSIS_MAX_ROWS ${fmt(a.configuration.ANALYSIS_MAX_ROWS)}, ANALYSIS_MAX_POINTS ${fmt(a.configuration.ANALYSIS_MAX_POINTS)}, SCHEDULER_MAX_CONCURRENT ${a.configuration.SCHEDULER_MAX_CONCURRENT}, SCHEDULER_MAX_PER_TENANT ${a.configuration.SCHEDULER_MAX_PER_TENANT}.`, '',
+    '**Algorithms in process** (no database; the large inputs exceed the default caps, which were raised for this measurement only):', '',
+    '| Algorithm | Input | n | p50 ms | p95 ms | max ms | prepare / algorithm p50 ms |', '|---|---|---:|---:|---:|---:|---|',
+    ...mlRows, '',
+    '**End-to-end runs** (manual run queued over HTTP, then claimed and executed by the scheduler: identity re-check, query under the run identity\'s role, bounded snapshot, analyses, insights, and four deliveries — in-app, signed webhook with rows to a loopback receiver, email through the in-memory test provider, CSV export; phase times are the run\'s own records, p50 in ms):', '',
+    '| Saved query | Rows | Analyses | Queue wait | Identity | Query | Snapshot | Analyses | Delivery | Wall p50 | Wall p95 |', '|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|',
+    ...runRows, '',
+    `Webhook deliveries received: ${a.webhook.received}, all with a valid signature: ${a.webhook.signature_valid === a.webhook.received ? 'yes' : 'no'}.`, '',
+    `**Burst:** ${t.runs} runs queued at once (enqueue ${fmt(t.enqueue_ms)} ms over HTTP) were drained by one scheduler process in ${fmt(t.drain_ms)} ms (${t.runs_per_s} runs/s, ${t.ticks} ticks; outcome ${Object.entries(t.outcome).map(([k, v]) => `${v} ${k}`).join(', ')}).`, '',
+    ...analyticsNotes(a), '',
+    '```sh', 'npm run benchmark:analytics          # ABENCH_CLAIMS=5000 ABENCH_ITER=3 ABENCH_BURST=10 for a quick run', '```', '',
+  ];
+}
+function analyticsNotes(a: any): string[] {
+  const perK = (alg: string, size: string, unit: number) => { const x = a.ml[alg][size]; return +(x.total.p50_ms / (parseInt(x.input.replace(/,/g, '')) / unit)).toFixed(1); };
+  const slowest = Object.entries(a.ml).map(([alg, s]: [string, any]) => [alg, s.large.total.p50_ms] as [string, number]).sort((x, y) => y[1] - x[1])[0];
+  const share = (r: any) => { const ph = ['identity', 'query', 'snapshot', 'analyses', 'delivery'].map((k) => [k, r.phases[k].p50_ms] as [string, number]).sort((x, y) => y[1] - x[1]); return ph[0]; };
+  const L = a.runs.large, S = a.runs.small;
+  return [
+    `- The cost per input unit does not grow from small to large inputs (for example \`anomaly.rolling_mad\` ${perK('anomaly.rolling_mad', 'small', 1000)} → ${perK('anomaly.rolling_mad', 'large', 1000)} ms per 1,000 points, \`cluster.kmeans\` ${perK('cluster.kmeans', 'small', 1000)} → ${perK('cluster.kmeans', 'large', 1000)} ms per 1,000 rows), i.e. roughly linear in this range. The slowest case measured was \`${slowest[0]}\` on the large input at ${slowest[1]} ms; with the defaults, inputs are capped at ANALYSIS_MAX_ROWS / ANALYSIS_MAX_POINTS (${a.configuration.ANALYSIS_MAX_ROWS.toLocaleString('en-US')}).`,
+    `- In end-to-end runs the largest phase was ${share(S)[0]} (${share(S)[1]} ms) for the 180-row query and ${share(L)[0]} (${share(L)[1]} ms) for the 5,000-row query. Wall time also includes the HTTP request that queues the run and the scheduler's claim and finalization transactions.`,
+    `- The scheduler executes at most SCHEDULER_MAX_CONCURRENT runs at once per process and SCHEDULER_MAX_PER_TENANT per tenant across processes; the ${a.throughput.runs}-run burst was worked off within those limits, and the database holds exactly one run per request (${Object.entries(a.throughput.outcome).map(([k, v]) => `${v} ${k}`).join(', ')}).`,
+    '- The webhook receiver and the email provider are local (loopback HTTP with private addresses allowed for the benchmark only; the in-memory test mail provider). A remote endpoint or SMTP relay adds network time, bounded per attempt by DELIVERY_TIMEOUT_MS.',
   ];
 }
 function nativeReport(): string[] {

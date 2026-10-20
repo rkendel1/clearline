@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   test:
-    name: typecheck, audit, unit, integration, scenarios A–N, mutation, benchmarks
+    name: typecheck, audit, unit, integration, scenarios A–T, mutation, benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -47,7 +47,7 @@ jobs:
         run: npm run test:unit
       - name: Integration tests
         run: npm run test:integration
-      - name: Demonstration scenarios A–N
+      - name: Demonstration scenarios A–T
         run: npm run test:scenarios
       - name: Mutation checks (planted defects must be caught by the tests)
         run: npm run test:mutation
@@ -63,6 +63,12 @@ jobs:
         env:
           QBENCH_CLAIMS: "5000"
           QBENCH_ITER: "5"
+      - name: Saved analytics benchmark (smoke)
+        run: npm run benchmark:analytics
+        env:
+          ABENCH_CLAIMS: "5000"
+          ABENCH_ITER: "2"
+          ABENCH_BURST: "10"
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v5
@@ -114,7 +120,7 @@ jobs:
         run: cargo test --release --locked --manifest-path native/Cargo.toml
       - name: Create application database role
         run: psql "$PG_ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE clearline LOGIN PASSWORD 'clearline' CREATEROLE"
-      - name: Native end-to-end (Scenario J native, Scenario O, Rust contract test against the live API, measurements)
+      - name: Native end-to-end (Scenario J native, Scenarios O and U, Rust contract tests against the live API, measurements)
         run: npm run test:e2e
       - name: Upload screenshots and measurements
         if: always()

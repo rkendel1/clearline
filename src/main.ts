@@ -7,11 +7,13 @@ import { closePool } from './platform/db.js';
 import { log } from './platform/logger.js';
 import { migrate } from './platform/migrate.js';
 import { Worker } from './ingestion/worker.js';
+import { Scheduler } from './analytics/scheduler.js';
 
 const cfg = loadConfig();
 if (process.env.MIGRATE_ON_START === 'true') await migrate();
 const app = await buildServer();
 const worker = cfg.runWorkerInApi ? new Worker().start() : null;
+const scheduler = cfg.runWorkerInApi && cfg.schedulerEnabled ? new Scheduler().start() : null;
 await app.listen({ port: cfg.port, host: cfg.host });
 log.info('api listening', { port: cfg.port, env: cfg.env, in_process_worker: !!worker });
 
@@ -23,6 +25,7 @@ async function shutdown(signal: string) {
   const force = setTimeout(() => { log.error('forced exit after grace period'); process.exit(1); }, cfg.shutdownGraceMs + 5000);
   await app.close();           // stop accepting requests, finish in-flight ones
   await worker?.stop();        // finish or abort (and re-queue) the in-flight batch
+  await scheduler?.stop();     // stop claiming; in-flight runs finish or are recovered after their lease
   await closePool();
   clearTimeout(force);
   log.info('shutdown complete');

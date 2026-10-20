@@ -24,7 +24,7 @@ import { loadPolicies, type PolicySet } from '../policy/fields.js';
 import { scrubSensitive } from '../quality/sensitive.js';
 import { buildCatalog, catalogJson, type Catalog } from './catalog.js';
 import { queryRole, querySurfaceCurrent, syncQuerySurface } from './surface.js';
-import { validateSql, type ValidationResult } from './validate.js';
+import { validateSql, type ParamDecl, type ValidationResult } from './validate.js';
 import { getProvider, ProviderUnavailable } from './providers/index.js';
 
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
@@ -73,11 +73,11 @@ function classify(err: unknown, cancelled: boolean): ExecFailure {
   return { status: 'failed', code: 'execution_failed', message: 'The query failed. Quote the execution id when reporting it.' };
 }
 
-async function estimate(tenant: string, dbRole: string, sql: string): Promise<{ cost: number; rows: number } | ExecFailure> {
+async function estimate(tenant: string, dbRole: string, sql: string, values: unknown[] = []): Promise<{ cost: number; rows: number } | ExecFailure> {
   const cfg = loadConfig();
   try {
     return await withQueryRole(tenant, dbRole, cfg.queryTimeoutMs, async (c) => {
-      const plan = (await c.query(`EXPLAIN (FORMAT JSON) ${sql}`)).rows[0]['QUERY PLAN'][0].Plan;
+      const plan = (await c.query({ text: `EXPLAIN (FORMAT JSON) ${sql}`, values })).rows[0]['QUERY PLAN'][0].Plan;
       return { cost: Number(plan['Total Cost']), rows: Number(plan['Plan Rows']) };
     });
   } catch (err) {
@@ -202,7 +202,7 @@ const perTenant = new Map<string, number>();
 let total = 0;
 
 export interface ExecuteResult {
-  execution_id: string; proposal_id: string; mode: string; status: string; columns: { name: string; type: string; masked: string | null }[];
+  execution_id: string; proposal_id: string | null; mode: string; status: string; columns: { name: string; type: string; masked: string | null }[];
   rows: unknown[][]; row_count: number; truncated: boolean; duration_ms: number; executed_sql: string; executed_sql_sha256: string; policy_epoch: number;
   error?: { code: string; message: string };
 }
@@ -211,28 +211,60 @@ const PG_TYPES: Record<number, string> = { 16: 'boolean', 20: 'integer', 21: 'in
   1114: 'timestamp', 1184: 'timestamp', 1186: 'interval', 1700: 'decimal', 2950: 'uuid' };
 
 export async function execute(p: Principal, proposalId: string, mode: 'preview' | 'run' | 'export', clientExecutionId?: string): Promise<ExecuteResult> {
+  const tenant = p.tenantId!;
+  if (!['preview', 'run', 'export'].includes(mode)) throw badRequest('invalid_mode', 'mode must be preview, run or export');
+  const row = await withTenant(tenant, (tx) => visibleProposal(tx, p, proposalId));
+  if (!row.proposed_sql) throw new AppError(422, 'not_executable', 'This proposal has no SQL to run.');
+  const { validation: _v, ...result } = await runSql({ principal: p, sql: row.proposed_sql, mode, executionId: clientExecutionId, origin: { proposalId, resource: `query:${proposalId}` } });
+  return result;
+}
+
+/** Where an execution came from: a workspace proposal or a saved query (optionally inside a scheduled or manual run). */
+export interface ExecutionOrigin { proposalId?: string; savedQueryId?: string; savedQueryVersion?: number; runId?: string; resource: string; via?: string }
+
+export interface RunSqlInput {
+  /** The identity whose tenant and role apply. For a scheduled run this is the schedule's run-as identity, already re-checked. */
+  principal: Principal;
+  sql: string;
+  params?: ParamDecl[];
+  values?: unknown[];
+  mode: 'preview' | 'run' | 'export';
+  origin: ExecutionOrigin;
+  executionId?: string;
+}
+
+export type RunSqlResult = ExecuteResult & { validation: ValidationResult };
+
+/**
+ * The one execution path: re-validate under the CURRENT policy for the principal's role, apply
+ * the row cap, check the planner cost, take a concurrency slot, run read-only as the tenant
+ * query role with bound parameter values, and record metadata (never rows) plus audit.
+ * Throws AppError 403 query_not_permitted when the SQL is not permitted now.
+ */
+export async function runSql(input: RunSqlInput): Promise<RunSqlResult> {
+  const { principal: p, origin, mode } = input;
   // A client may name the execution up front so it can cancel it while it runs.
-  if (clientExecutionId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(clientExecutionId)) throw badRequest('invalid_execution_id', 'execution_id must be a lowercase UUID');
+  if (input.executionId !== undefined && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(input.executionId)) throw badRequest('invalid_execution_id', 'execution_id must be a lowercase UUID');
   const tenant = p.tenantId!;
   const cfg = loadConfig();
-  if (!['preview', 'run', 'export'].includes(mode)) throw badRequest('invalid_mode', 'mode must be preview, run or export');
+  const values = input.values ?? [];
   await ensureSurface(tenant);
-  const { row, ctx } = await withTenant(tenant, async (tx) => ({ row: await visibleProposal(tx, p, proposalId), ctx: await context(tx, p) }));
-  if (!row.proposed_sql) throw new AppError(422, 'not_executable', 'This proposal has no SQL to run.');
+  const ctx = await withTenant(tenant, (tx) => context(tx, p));
+  const via = origin.via ? { via: origin.via } : {};
 
-  await audit({ tenantId: tenant, actor: p.actor, role: p.role, action: 'query.execution.requested', resource: `query:${proposalId}`, outcome: 'allowed',
-    details: { mode, policy_epoch: ctx.set.epoch }, correlationId: p.correlationId });
-  // Re-validate under the current policy: a proposal validated earlier (or by someone else) is not trusted.
+  await audit({ tenantId: tenant, actor: p.actor, role: p.role, action: 'query.execution.requested', resource: origin.resource, outcome: 'allowed',
+    details: { mode, policy_epoch: ctx.set.epoch, saved_query_id: origin.savedQueryId ?? null, saved_query_version: origin.savedQueryVersion ?? null, run_id: origin.runId ?? null, ...via }, correlationId: p.correlationId });
+  // Re-validate under the current policy: SQL validated earlier (or by someone else) is not trusted.
   const cap = mode === 'preview' ? cfg.queryPreviewRows : cfg.queryMaxRows;
-  const v = await validateSql(row.proposed_sql, ctx.catalog, { maxRows: cfg.queryMaxRows });
+  const v = await validateSql(input.sql, ctx.catalog, { maxRows: cfg.queryMaxRows, params: input.params });
   if (!v.ok) {
-    await audit({ tenantId: tenant, actor: p.actor, role: p.role, action: 'query.validation', resource: `query:${proposalId}`, outcome: 'denied',
-      details: { stage: 'execute', issue_codes: v.issues.map((i) => i.code), policy_epoch: ctx.set.epoch }, correlationId: p.correlationId });
+    await audit({ tenantId: tenant, actor: p.actor, role: p.role, action: 'query.validation', resource: origin.resource, outcome: 'denied',
+      details: { stage: 'execute', issue_codes: v.issues.map((i) => i.code), policy_epoch: ctx.set.epoch, run_id: origin.runId ?? null, ...via }, correlationId: p.correlationId });
     throw new AppError(403, 'query_not_permitted', v.issues[0]?.message ?? 'The query is not permitted.', { issues: v.issues });
   }
   const executedSql = await v.withLimit!(cap + 1);
   const dbRole = queryRole(tenant, p.role);
-  const est = await estimate(tenant, dbRole, executedSql);
+  const est = await estimate(tenant, dbRole, executedSql, values);
   if (!('cost' in est)) throw new AppError(422, est.code, est.message);
   if (est.cost > cfg.queryMaxCost) throw new AppError(422, 'too_expensive', `The estimated cost (${Math.round(est.cost)}) exceeds the limit (${cfg.queryMaxCost}).`);
 
@@ -240,13 +272,14 @@ export async function execute(p: Principal, proposalId: string, mode: 'preview' 
   if (n >= cfg.queryMaxConcurrentPerTenant || total >= cfg.queryMaxConcurrent) {
     throw new AppError(429, 'query_concurrency_limit', 'Too many queries are running; wait for one to finish or cancel it.');
   }
-  const id = clientExecutionId ?? randomUUID();
+  const id = input.executionId ?? randomUUID();
   if (running.has(id)) throw new AppError(409, 'execution_id_in_use', 'That execution id is already in use.');
   perTenant.set(tenant, n + 1); total++;
   const masked = v.output.filter((o) => o.masked).map((o) => ({ column: o.name, field: `${o.table}.${o.column}`, redaction: o.masked }));
   try {
-    await withTenant(tenant, (tx) => tx.query(`INSERT INTO core.query_executions (id, tenant_id, proposal_id, actor, role, mode, executed_sql, executed_sql_sha256, status, masked_columns, policy_epoch, correlation_id)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'running',$9,$10,$11)`, [id, tenant, proposalId, p.actor, p.role, mode, executedSql, sha(executedSql), JSON.stringify(masked), ctx.set.epoch, p.correlationId]));
+    await withTenant(tenant, (tx) => tx.query(`INSERT INTO core.query_executions (id, tenant_id, proposal_id, saved_query_id, saved_query_version, run_id, actor, role, mode, executed_sql, executed_sql_sha256, status, masked_columns, policy_epoch, correlation_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'running',$12,$13,$14)`, [id, tenant, origin.proposalId ?? null, origin.savedQueryId ?? null, origin.savedQueryVersion ?? null, origin.runId ?? null,
+      p.actor, p.role, mode, executedSql, sha(executedSql), JSON.stringify(masked), ctx.set.epoch, p.correlationId]));
   } catch (err) {
     perTenant.set(tenant, (perTenant.get(tenant) ?? 1) - 1); total--;
     if ((err as { code?: string }).code === '23505') throw new AppError(409, 'execution_id_in_use', 'That execution id is already in use.');
@@ -259,7 +292,7 @@ export async function execute(p: Principal, proposalId: string, mode: 'preview' 
   try {
     const res = await withQueryRole(tenant, dbRole, cfg.queryTimeoutMs, async (c) => {
       if (state.cancelled) throw Object.assign(new Error('cancelled before start'), { code: '57014' });
-      return c.query({ text: executedSql, rowMode: 'array' });
+      return c.query({ text: executedSql, values, rowMode: 'array' });
     }, (pid) => { state.pid = pid; });
     const columns = res.fields.map((f, i) => ({ name: f.name, type: PG_TYPES[f.dataTypeID] ?? 'string', masked: v.output[i]?.masked ?? null }));
     let rows = res.rows as unknown[][];
@@ -273,12 +306,12 @@ export async function execute(p: Principal, proposalId: string, mode: 'preview' 
     }
     rows = rows.map((r) => r.map((x) => (x instanceof Date ? x.toISOString() : x)));
     const ms = Math.round(performance.now() - started);
-    result = { execution_id: id, proposal_id: proposalId, mode, status: 'succeeded', columns, rows, row_count: rows.length, truncated, duration_ms: ms, executed_sql: executedSql, executed_sql_sha256: sha(executedSql), policy_epoch: ctx.set.epoch };
+    result = { execution_id: id, proposal_id: origin.proposalId ?? null, mode, status: 'succeeded', columns, rows, row_count: rows.length, truncated, duration_ms: ms, executed_sql: executedSql, executed_sql_sha256: sha(executedSql), policy_epoch: ctx.set.epoch };
   } catch (err) {
     const f = classify(err, state.cancelled);
     if (f.code === 'denied_by_database') log.error('query denied by database privileges after validation passed', { tenant, role: p.role, execution: id });
     if (f.code === 'execution_failed') log.error('query execution failed', { execution: id, error: err as Error });
-    result = { execution_id: id, proposal_id: proposalId, mode, status: f.status, columns: [], rows: [], row_count: 0, truncated: false, duration_ms: Math.round(performance.now() - started),
+    result = { execution_id: id, proposal_id: origin.proposalId ?? null, mode, status: f.status, columns: [], rows: [], row_count: 0, truncated: false, duration_ms: Math.round(performance.now() - started),
       executed_sql: executedSql, executed_sql_sha256: sha(executedSql), policy_epoch: ctx.set.epoch, error: { code: f.code, message: f.message } };
   } finally {
     running.delete(id);
@@ -287,12 +320,23 @@ export async function execute(p: Principal, proposalId: string, mode: 'preview' 
   await withTenant(tenant, async (tx) => {
     await tx.query(`UPDATE core.query_executions SET status = $2, row_count = $3, truncated = $4, duration_ms = $5, columns = $6, error_code = $7, finished_at = clock_timestamp() WHERE id = $1`,
       [id, result.status, result.row_count, result.truncated, result.duration_ms, JSON.stringify(result.columns), result.error?.code ?? null]);
-    await auditTx(tx, { tenantId: tenant, actor: p.actor, role: p.role, action: 'query.execution', resource: `query:${proposalId}`, outcome: result.status === 'succeeded' ? 'succeeded' : 'failed',
+    await auditTx(tx, { tenantId: tenant, actor: p.actor, role: p.role, action: 'query.execution', resource: origin.resource, outcome: result.status === 'succeeded' ? 'succeeded' : 'failed',
       details: { execution_id: id, mode, status: result.status, error_code: result.error?.code ?? null, row_count: result.row_count, truncated: result.truncated, duration_ms: result.duration_ms,
-        proposed_sql_sha256: sha(row.proposed_sql), executed_sql_sha256: result.executed_sql_sha256, columns: result.columns.map((c) => c.name), redaction_applied: masked, policy_epoch: ctx.set.epoch },
+        proposed_sql_sha256: sha(input.sql), executed_sql_sha256: result.executed_sql_sha256, parameters: v.parameters ?? [], columns: result.columns.map((c) => c.name), redaction_applied: masked,
+        policy_epoch: ctx.set.epoch, saved_query_id: origin.savedQueryId ?? null, saved_query_version: origin.savedQueryVersion ?? null, run_id: origin.runId ?? null, ...via },
       correlationId: p.correlationId });
   });
-  return result;
+  return { ...result, validation: v };
+}
+
+/** Validate SQL for a principal without executing it (saved-query editing, schedule checks). */
+export async function validateFor(p: Principal, sql: string, params?: ParamDecl[]) {
+  await ensureSurface(p.tenantId!);
+  const cfg = loadConfig();
+  return withTenant(p.tenantId!, async (tx) => {
+    const ctx = await context(tx, p);
+    return { validation: await validateSql(sql, ctx.catalog, { maxRows: cfg.queryMaxRows, params }), policy_epoch: ctx.set.epoch, catalog: ctx.catalog };
+  });
 }
 
 export async function cancel(p: Principal, executionId: string) {
@@ -352,4 +396,22 @@ export async function history(p: Principal, opts: { limit: number; all: boolean 
     for (const r of rows) r._executions = ex.filter((e) => e.proposal_id === r.id);
     return { policy_epoch: ctx.set.epoch, items: await Promise.all(rows.map((r) => serializeProposal(p, r, ctx))) };
   });
+}
+
+export interface OutputSchemaColumn { name: string; type: string; masked: string | null; sensitive: boolean; sources: string[] }
+
+/**
+ * The output schema of SQL for a principal, without reading data: validate under the CURRENT policy,
+ * then run it with LIMIT 0 and every parameter NULL as the tenant query role, keeping only column types.
+ */
+export async function describeOutput(p: Principal, sql: string, params?: ParamDecl[]): Promise<{ validation: ValidationResult; columns: OutputSchemaColumn[] | null; policy_epoch: number }> {
+  const { validation: v, policy_epoch } = await validateFor(p, sql, params);
+  if (!v.ok) return { validation: v, columns: null, policy_epoch };
+  const text = await v.withLimit!(0);
+  const cfg = loadConfig();
+  const res = await withQueryRole(p.tenantId!, queryRole(p.tenantId!, p.role), cfg.queryTimeoutMs, (c) => c.query({ text, values: (params ?? []).map(() => null), rowMode: 'array' }));
+  return {
+    validation: v, policy_epoch,
+    columns: res.fields.map((f, i) => ({ name: f.name, type: PG_TYPES[f.dataTypeID] ?? 'string', masked: v.output[i]?.masked ?? null, sensitive: v.output[i]?.sensitive ?? false, sources: v.output[i]?.sources ?? [] })),
+  };
 }
