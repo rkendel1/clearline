@@ -22,9 +22,12 @@ Requires Docker with Compose v2.
 docker compose up -d              # Postgres → migrations → demo seed → API + worker on :8080
 docker compose run --rm demo      # load the reference dataset; prints platform results next to ground truth,
                                   # then the same question asked under four roles
+open http://localhost:8080         # the web interface (served by the API; sign in with a demo token below)
 npm run native:build              # the desktop client (Rust 1.88+, see native/README.md for system libraries)
 native/target/release/clearline --url http://localhost:8080
 ```
+
+The web app (`web/`, React + Vite + TypeScript) is a parallel interface to the same API with the same views and permissions as the desktop client. See [web/README.md](web/README.md).
 
 Sign in with a demo token (seeded only outside production, synthetic tenants only):
 

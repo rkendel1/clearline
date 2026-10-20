@@ -6,3 +6,5 @@ test-results
 *.log
 native/target
 native
+**/node_modules
+web/dist

@@ -12,6 +12,7 @@ import { pendingMigrations } from '../platform/migrate.js';
 import { authenticate, authorize, type Principal } from '../control/auth.js';
 import { audit } from '../control/audit.js';
 import { ROUTES } from './routes.js';
+import { isUiPath, registerWeb, UI_CSP, webDir } from './static.js';
 
 declare module 'fastify' { interface FastifyRequest { principal?: Principal; correlationId: string } }
 
@@ -27,9 +28,12 @@ export async function buildServer(): Promise<FastifyInstance> {
     rep.header('x-correlation-id', req.correlationId);
   });
 
-  // Hardening headers: the API serves JSON and CSV only (the UI is the native client), so nothing may be framed, sniffed or scripted.
+  // Hardening headers: API responses are JSON and CSV only, so nothing may be framed, sniffed or scripted.
+  // The hosted web interface (static files only) gets its own strict policy; see static.ts.
+  const web = webDir();
   app.addHook('onSend', async (_req, rep, payload) => {
-    rep.header('content-security-policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
+    const ui = web !== null && rep.statusCode < 400 && rep.request.method === 'GET' && isUiPath(rep.request.url);
+    rep.header('content-security-policy', ui ? UI_CSP : "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     rep.header('x-content-type-options', 'nosniff');
     rep.header('referrer-policy', 'no-referrer');
     rep.header('x-frame-options', 'DENY');
@@ -106,7 +110,8 @@ export async function buildServer(): Promise<FastifyInstance> {
     });
   }
 
-  app.setNotFoundHandler((_req, rep) => rep.code(404).send({ error: { code: 'not_found', message: 'route not found' } }));
+  if (web) { registerWeb(app, web); log.info('web interface enabled', { dir: web }); }
+  else app.setNotFoundHandler((_req, rep) => rep.code(404).send({ error: { code: 'not_found', message: 'route not found' } }));
   return app;
 }
 
