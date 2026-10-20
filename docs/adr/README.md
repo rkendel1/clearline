@@ -12,3 +12,6 @@
 | [0008](0008-defence-in-depth-isolation.md) | Tenant isolation in the application *and* the database | Accepted, with known gap |
 | [0009](0009-typescript-only.md) | TypeScript for processing too (no Python service) | Accepted |
 | [0010](0010-separation-of-duties.md) | Separation of duties: approver role, bootstrap-only platform admin | Accepted (after independent review) |
+| [0011](0011-governed-natural-language-sql.md) | Natural-language SQL as an untrusted proposal behind a structural validator and a database boundary | Accepted |
+| [0012](0012-field-policy-model.md) | Field access and sensitivity are separate policy dimensions, enforced by one server-side resolver | Accepted |
+| [0013](0013-native-client.md) | A native Rust/GPUI client replaces the React dashboard | Accepted |

@@ -45,22 +45,22 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant` | admin, approver, operator, reporter | Tenant details and retention policy. |
+| GET | `/api/v1/tenants/:tenant` | admin, approver, steward, operator, reporter | Tenant details and retention policy. |
 
 ## Contracts
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/contracts` | admin, approver, operator, reporter | All contract versions with lifecycle state. |
-| GET | `/api/v1/tenants/:tenant/contracts/active` | admin, approver, operator, reporter | The active contract document. |
-| POST | `/api/v1/tenants/:tenant/contracts/validate` | admin, approver, operator, reporter | Dry run: validate a contract and show the migration plan without changing anything. |
+| GET | `/api/v1/tenants/:tenant/contracts` | admin, approver, steward, operator, reporter | All contract versions with lifecycle state. |
+| GET | `/api/v1/tenants/:tenant/contracts/active` | admin, approver, steward, operator, reporter | The active contract document (fields hidden from your role by field policy are omitted). |
+| POST | `/api/v1/tenants/:tenant/contracts/validate` | admin, approver, steward, operator, reporter | Dry run: validate a contract and show the migration plan without changing anything. |
 | POST | `/api/v1/tenants/:tenant/contracts` | admin | Publish a contract version. 201 = applied; 202 = breaking, awaiting approval; 422 = invalid or rejected. |
 
 ## Migrations
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/migrations` | admin, approver, operator, reporter | Contract migrations with plans and approval state. |
+| GET | `/api/v1/tenants/:tenant/migrations` | admin, approver, steward, operator, reporter | Contract migrations with plans and approval state. |
 | POST | `/api/v1/tenants/:tenant/migrations/:id/approve` | approver | Approve and apply a pending breaking migration (approver role). Body: {confirm_version}. |
 | POST | `/api/v1/tenants/:tenant/migrations/:id/reject` | approver | Reject a pending migration. Body: {reason}. |
 | POST | `/api/v1/tenants/:tenant/migrations/:id/rollback` | approver | Roll back an applied migration (only before any batch uses the new version). |
@@ -99,36 +99,36 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/reports/operations` | admin, operator, reporter | Data operations report: volumes, failures, freshness, quality trend, reconciliation, latency, queue. Query: from?, to?. |
-| GET | `/api/v1/tenants/:tenant/reports/business` | admin, operator, reporter | Business summary: contract-declared metrics over trusted data, plus exception rate. |
-| GET | `/api/v1/tenants/:tenant/reports/exceptions` | admin, operator, reporter | Exception report: quarantined records, conflicts, late arrivals, orphaned references, batches needing review. |
+| GET | `/api/v1/tenants/:tenant/reports/operations` | admin, steward, operator, reporter | Data operations report: volumes, failures, freshness, quality trend, reconciliation, latency, queue. Query: from?, to?. |
+| GET | `/api/v1/tenants/:tenant/reports/business` | admin, steward, operator, reporter | Business summary: contract-declared metrics over trusted data, plus exception rate. |
+| GET | `/api/v1/tenants/:tenant/reports/exceptions` | admin, steward, operator, reporter | Exception report: quarantined records, conflicts, late arrivals, orphaned references, batches needing review. |
 
 ## Metrics
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/metrics/definitions` | admin, operator, reporter | Definitions of every reported metric (declared by contract and platform-defined). |
+| GET | `/api/v1/tenants/:tenant/metrics/definitions` | admin, steward, operator, reporter | Definitions of every reported metric (declared by contract and platform-defined). |
 
 ## Reconciliation
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/reconciliation` | admin, operator, reporter | Latest dataset-level reconciliation run and recent batch reconciliation failures. |
+| GET | `/api/v1/tenants/:tenant/reconciliation` | admin, steward, operator, reporter | Latest dataset-level reconciliation run and recent batch reconciliation failures. |
 | POST | `/api/v1/tenants/:tenant/reconciliation/run` | admin, operator | Run dataset reconciliation now and re-verify every committed batch against the target (drift detection). |
 
 ## Extracts
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/extracts` | admin, operator, reporter | Declared extracts with their explicit schemas. |
-| GET | `/api/v1/tenants/:tenant/extracts/:id/schema` | admin, operator, reporter | Explicit schema of one extract. |
+| GET | `/api/v1/tenants/:tenant/extracts` | admin, operator, reporter | Declared extracts with their explicit schemas (as your role receives them). |
+| GET | `/api/v1/tenants/:tenant/extracts/:id/schema` | admin, operator, reporter | Explicit schema of one extract (as your role receives it). |
 | GET | `/api/v1/tenants/:tenant/extracts/:id/csv` | admin, operator, reporter | Run an extract as CSV. Query: as_of?, filters? (JSON), include_untrusted?, include_sensitive? (admin only). Metadata in X-Clearline-* headers. |
 
 ## Audit
 
 | Method | Path | Roles | Description |
 |---|---|---|---|
-| GET | `/api/v1/tenants/:tenant/audit` | admin | Audit trail (append-only). Query: action?, limit?. |
+| GET | `/api/v1/tenants/:tenant/audit` | admin, steward | Audit trail (append-only). Query: action?, limit?. |
 
 ## Retention
 
@@ -141,6 +141,26 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 | Method | Path | Roles | Description |
 |---|---|---|---|
 | POST | `/api/v1/tenants/:tenant/subjects/:entity/:key/erase` | admin | Erase one subject (all versions, raw payloads, quarantine) and log affected exports. |
+
+## Queries
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/api/v1/tenants/:tenant/queries/catalog` | admin, steward, operator, reporter | Tables and columns this role may query, with access levels, relationships and metric definitions (metadata only). |
+| POST | `/api/v1/tenants/:tenant/queries/proposals` | admin, steward, operator, reporter | Create a query proposal from {question} (generated by the configured provider) or {sql, parent_id?} (hand-written or edited). Validates and estimates; never executes. |
+| GET | `/api/v1/tenants/:tenant/queries/proposals/:id` | admin, steward, operator, reporter | One proposal with its validation and executions (re-evaluated against your current access). |
+| POST | `/api/v1/tenants/:tenant/queries/proposals/:id/execute` | admin, steward, operator, reporter | Run a proposal after re-validating it under the current policy. Body: {mode: preview\|run, execution_id?: uuid (lets the client cancel it while it runs)}. Returns permitted, redacted rows; rows are not stored. |
+| POST | `/api/v1/tenants/:tenant/queries/proposals/:id/export` | admin, steward, operator, reporter | Run a proposal and return CSV (same validation and redaction as execute). |
+| POST | `/api/v1/tenants/:tenant/queries/executions/:id/cancel` | admin, steward, operator, reporter | Cancel a running query execution. |
+| GET | `/api/v1/tenants/:tenant/queries/history` | admin, steward, operator, reporter | Your query history (all=true for the whole tenant with query:history_all). Query: limit?. |
+
+## Fields
+
+| Method | Path | Roles | Description |
+|---|---|---|---|
+| GET | `/api/v1/tenants/:tenant/fields/policies` | admin, steward, operator | Field policies (sensitivity, redaction, unmask roles, role access) with the effective access of every role. |
+| POST | `/api/v1/tenants/:tenant/fields/:entity/:field/policy` | admin, steward | Change one field policy (field "*" = table). Body: {sensitive?, redaction?, reason?, unmask_roles?, role_access?}. Widening requires policy:grant. |
+| GET | `/api/v1/tenants/:tenant/fields/policies/history` | admin, steward, operator | Append-only version history of field policy changes. Query: entity?, field?, limit?. |
 
 ## Examples
 

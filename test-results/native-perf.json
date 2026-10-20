@@ -1,0 +1,35 @@
+{
+  "generated_at": "2026-10-20T00:44:06.010Z",
+  "binary": "/home/user/clearline/native/target/release/clearline",
+  "launch": {
+    "event": "ready",
+    "spawn_to_ready_ms": 143
+  },
+  "startup_ms": 130.59,
+  "large_result_request_to_frame_ms": 256.74,
+  "scroll_5000_rows": {
+    "n": 150,
+    "mean_ms": 43.17,
+    "p50_ms": 47.98,
+    "p95_ms": 48.09,
+    "max_ms": 64.03,
+    "fps_mean": 23.16
+  },
+  "typing_while_query_runs": {
+    "n": 120,
+    "mean_ms": 68.09,
+    "p50_ms": 63.72,
+    "p95_ms": 79.68,
+    "max_ms": 95.78,
+    "fps_mean": 14.69
+  },
+  "typing_idle": {
+    "n": 120,
+    "mean_ms": 48.13,
+    "p50_ms": 47.7,
+    "p95_ms": 50.62,
+    "max_ms": 63.73,
+    "fps_mean": 20.78
+  },
+  "note": "Measured under Xvfb with Mesa lavapipe (software Vulkan); a GPU desktop renders faster. Frame intervals are between frames GPUI actually drew."
+}

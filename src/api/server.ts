@@ -2,10 +2,7 @@
 // IDs, error mapping, access auditing. Business logic lives in the modules.
 
 import Fastify, { type FastifyInstance, type FastifyRequest } from 'fastify';
-import fastifyStatic from '@fastify/static';
 import { createHash, randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
-import path from 'node:path';
 import { loadConfig } from '../platform/config.js';
 import { getPool, withSystem, requestTenant, TenantScopeViolation } from '../platform/db.js';
 import { log } from '../platform/logger.js';
@@ -30,9 +27,9 @@ export async function buildServer(): Promise<FastifyInstance> {
     rep.header('x-correlation-id', req.correlationId);
   });
 
-  // Browser hardening for the same-origin dashboard: no third-party origins, no framing, no sniffing.
+  // Hardening headers: the API serves JSON and CSV only (the UI is the native client), so nothing may be framed, sniffed or scripted.
   app.addHook('onSend', async (_req, rep, payload) => {
-    rep.header('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+    rep.header('content-security-policy', "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
     rep.header('x-content-type-options', 'nosniff');
     rep.header('referrer-policy', 'no-referrer');
     rep.header('x-frame-options', 'DENY');
@@ -109,17 +106,7 @@ export async function buildServer(): Promise<FastifyInstance> {
     });
   }
 
-  // ---- dashboard (static build), same origin as the API
-  const dash = path.resolve(cfg.dashboardDir);
-  if (existsSync(path.join(dash, 'index.html'))) {
-    await app.register(fastifyStatic, { root: dash, prefix: '/', wildcard: false });
-    // SPA fallback only for page routes; a missing asset (path with an extension) is a real 404, never HTML.
-    app.setNotFoundHandler((req, rep) => {
-      const p = req.url.split('?')[0];
-      return req.method === 'GET' && !p.startsWith('/api/') && !/\.[a-z0-9]+$/i.test(p)
-        ? rep.sendFile('index.html') : rep.code(404).send({ error: { code: 'not_found', message: 'route not found' } });
-    });
-  }
+  app.setNotFoundHandler((_req, rep) => rep.code(404).send({ error: { code: 'not_found', message: 'route not found' } }));
   return app;
 }
 

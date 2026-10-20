@@ -8,8 +8,9 @@ Three layers: **platform tables** in schema `core` (fixed, versioned migrations 
 
 | Migration | Applied | Checksum |
 |---|---|---|
-| 0001_core.sql | 2026-10-19 | `b900972405558a85…` |
-| 0002_review_hardening.sql | 2026-10-19 | `194358b67e16f02b…` |
+| 0001_core.sql | 2026-10-20 | `b900972405558a85…` |
+| 0002_review_hardening.sql | 2026-10-20 | `194358b67e16f02b…` |
+| 0003_query_workspace.sql | 2026-10-20 | `d031b1be1999c7e9…` |
 
 Tenant storage changes are not platform migrations: they are contract migrations, planned and recorded in `core.contract_migrations` (see docs/contracts.md).
 
@@ -213,6 +214,44 @@ Every extract produced: parameters, as_of, row count, content SHA-256 and the re
 | record_refs | jsonb | no |
 | created_at | timestamp with time zone | no |
 
+### core.field_policies
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| tenant_id | text | no |
+| entity | text | no |
+| field | text | no |
+| sensitive | boolean | no |
+| redaction | text | no |
+| reason | text | yes |
+| unmask_roles | ARRAY | no |
+| role_access | jsonb | no |
+| version | integer | no |
+| updated_by | text | no |
+| updated_role | text | no |
+| updated_at | timestamp with time zone | no |
+
+### core.field_policy_versions
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | bigint | no |
+| tenant_id | text | no |
+| entity | text | no |
+| field | text | no |
+| version | integer | no |
+| policy | jsonb | no |
+| previous | jsonb | no |
+| change_kind | text | no |
+| changed_by | text | no |
+| changed_role | text | no |
+| changed_at | timestamp with time zone | no |
+| correlation_id | text | yes |
+
 ### core.quality_findings
 
 Per-record findings (rule, field, message) — the "affected records" for each quality result.
@@ -268,6 +307,69 @@ Rows held out of canonical data, with category and the full list of errors; open
 | resolved_at | timestamp with time zone | yes |
 | resolved_by | text | yes |
 | resolution | text | yes |
+
+### core.query_executions
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| proposal_id | uuid | no |
+| actor | text | no |
+| role | text | no |
+| mode | text | no |
+| executed_sql | text | no |
+| executed_sql_sha256 | text | no |
+| status | text | no |
+| row_count | integer | yes |
+| truncated | boolean | yes |
+| duration_ms | integer | yes |
+| columns | jsonb | yes |
+| masked_columns | jsonb | yes |
+| error_code | text | yes |
+| policy_epoch | bigint | no |
+| correlation_id | text | yes |
+| started_at | timestamp with time zone | no |
+| finished_at | timestamp with time zone | yes |
+
+### core.query_proposals
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| id | uuid | no |
+| tenant_id | text | no |
+| actor | text | no |
+| role | text | no |
+| source | text | no |
+| parent_id | uuid | yes |
+| question | text | yes |
+| provider | text | yes |
+| model | text | yes |
+| proposed_sql | text | yes |
+| explanation | text | yes |
+| status | text | no |
+| validation | jsonb | no |
+| validated_sql | text | yes |
+| validated_sql_sha256 | text | yes |
+| estimate | jsonb | yes |
+| policy_epoch | bigint | no |
+| correlation_id | text | yes |
+| created_at | timestamp with time zone | no |
+
+### core.query_surfaces
+
+
+
+| Column | Type | Nullable |
+|---|---|---|
+| tenant_id | text | no |
+| contract_version_id | bigint | no |
+| policy_epoch | bigint | no |
+| generated_at | timestamp with time zone | no |
 
 ### core.raw_records
 

@@ -1,0 +1,11 @@
+# 0011: Natural-language SQL as an untrusted proposal behind a structural validator and a database boundary
+
+**Context.** Users should explore operational data without writing SQL and without unrestricted database access. Model output can be wrong, adversarial (prompt injection through data or questions), or simply ask for things the user may not see.
+
+**Decision.** A provider (deterministic rules by default, Claude optionally) turns a question into SQL using only the role's *permitted catalog* (metadata, never row values). That SQL is a proposal: it is validated exactly like hand-written SQL, displayed with the server's own structural summary, and executed only on an explicit request that re-validates it under the current policy. Validation parses with PostgreSQL's own parser (libpg-query) and walks the tree against an allowlist; restricted fields are tracked through every expression; the validated tree is rewritten onto per-tenant views, masked outputs are computed in the database, and the deparsed text is parsed and checked again. Execution happens on a separate privilege-less login that `SET ROLE`s to a per-(tenant, role) query role in a read-only, time-limited transaction; row-level security and column grants enforce tenant and field access independently of the validator.
+
+**Reasons.** Neither prompting nor UI restrictions are an authorization mechanism. A structural allowlist over the real parser's tree is precise (no regex ambiguity, no dialect gaps between parser and server) and fails closed on anything new. A database layer that would refuse the same access means a validator defect is not a disclosure (Scenario N2 bypasses the validator to prove it). Keeping generation, validation and execution separate makes the provider replaceable and testable without a network.
+
+**Costs.** A deliberately small SQL subset (no window functions, set operations, LATERAL, regex); the validator must be extended consciously for each new construct. One extra login and per-tenant roles to provision. EXPLAIN and re-validation on every execution add a few milliseconds ([benchmark.md](../benchmark.md)).
+
+**Revisit when** analysts need window functions or set operations routinely (extend the allowlist with lineage tracking), or when a dedicated read replica becomes the query target.

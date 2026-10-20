@@ -52,7 +52,7 @@ export async function issueToken(p: Principal, tenantId: string, name: string, r
 }
 
 async function issueTokenInner(p: Principal, tenantId: string, name: string, role: Role, explicitToken?: string) {
-  if (!['admin', 'approver', 'operator', 'reporter'].includes(role)) throw badRequest('invalid_role', 'role must be admin, approver, operator or reporter');
+  if (!['admin', 'approver', 'steward', 'operator', 'reporter'].includes(role)) throw badRequest('invalid_role', 'role must be admin, approver, steward, operator or reporter');
   if (role === 'platform_admin') throw badRequest('invalid_role', 'platform_admin tokens cannot be issued through the API');
   if (p.role === 'admin' && p.tenantId !== tenantId) throw badRequest('invalid_tenant', 'admins can only issue tokens for their own tenant');
   if (!/^[a-z0-9][a-z0-9._-]{2,60}$/.test(name)) throw badRequest('invalid_name', 'token name must be 3-61 chars of [a-z0-9._-]');

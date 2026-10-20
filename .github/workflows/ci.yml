@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   test:
-    name: typecheck, audit, unit, integration, scenarios A–J, e2e
+    name: typecheck, audit, unit, integration, scenarios A–N, mutation, benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -34,33 +34,23 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            dashboard/package-lock.json
+          cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm --prefix dashboard ci
       - name: Typecheck
         run: npm run typecheck
       - name: Dependency audit (production dependencies, high and above fail the build)
         run: |
           npm audit --omit=dev --audit-level=high
-          npm --prefix dashboard audit --omit=dev --audit-level=high
       - name: Create application database role
         run: psql "$PG_ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE clearline LOGIN PASSWORD 'clearline' CREATEROLE"
       - name: Unit tests
         run: npm run test:unit
       - name: Integration tests
         run: npm run test:integration
-      - name: Demonstration scenarios A–J
+      - name: Demonstration scenarios A–N
         run: npm run test:scenarios
       - name: Mutation checks (planted defects must be caught by the tests)
         run: npm run test:mutation
-      - name: Build dashboard
-        run: npm --prefix dashboard run build
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: End-to-end dashboard test
-        run: npm run test:e2e
       - name: Small benchmark (smoke; numbers from CI runners are not published)
         run: npm run benchmark
         env:
@@ -68,12 +58,72 @@ jobs:
           BENCH_WORKERS: "2"
           BENCH_PARALLEL_BATCHES: "4"
           BENCH_PARALLEL_ROWS: "1000"
+      - name: Query workspace benchmark (smoke)
+        run: npm run benchmark:query
+        env:
+          QBENCH_CLAIMS: "5000"
+          QBENCH_ITER: "5"
       - name: Upload test evidence
         if: always()
         uses: actions/upload-artifact@v5
         with:
           name: test-results
           path: test-results/
+
+  native:
+    name: native client (Rust/GPUI) build, tests, end-to-end under Xvfb
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s --health-timeout 3s --health-retries 30
+    env:
+      PG_ADMIN_URL: postgres://postgres:postgres@localhost:5432/postgres
+      PGHOST_URL: postgres://clearline:clearline@localhost:5432
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v5
+      - name: System libraries, software Vulkan, X server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential pkg-config libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libvulkan-dev libx11-xcb-dev libxcb1-dev libfontconfig-dev libfreetype-dev libasound2-dev libzstd-dev \
+            mesa-vulkan-drivers xvfb openbox imagemagick
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: Rust dependency audit (vulnerabilities fail; unmaintained-crate warnings are reported)
+        run: cargo audit --file native/Cargo.lock
+      - name: Build (release)
+        run: cargo build --release --locked --manifest-path native/Cargo.toml
+      - name: Rust unit tests
+        run: cargo test --release --locked --manifest-path native/Cargo.toml
+      - name: Create application database role
+        run: psql "$PG_ADMIN_URL" -v ON_ERROR_STOP=1 -c "CREATE ROLE clearline LOGIN PASSWORD 'clearline' CREATEROLE"
+      - name: Native end-to-end (Scenario J native, Scenario O, Rust contract test against the live API, measurements)
+        run: npm run test:e2e
+      - name: Upload screenshots and measurements
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-results
+          path: |
+            test-results/native/
+            test-results/native-perf.json
 
   secrets:
     name: secret scan

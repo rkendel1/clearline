@@ -56,7 +56,7 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 | Post-load drift detection (row counts and control-total fields), including migration-created versions; audited trust restoration | Tested † | Scenarios H step 9, I. Drift in *other* fields of a row is not detected. |
 | Failing dataset checks qualify trusted metrics and extracts | Tested † | Scenario I |
 | Trusted outputs use the latest trusted version (an untrusted correction never displaces trusted data) | Tested † | Scenario I step 5 |
-| Dashboard distinguishes ran from trusted, using the API's verdict | Tested | e2e dashboard test |
+| The client distinguishes ran from trusted, using the API's verdict | Tested | Native e2e (Scenario J native: verdict, untrusted batch detail) |
 
 ## Privacy, security, isolation
 
@@ -72,9 +72,38 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 | Safe logging | Tested | Unit test; Scenario D captures worker logs |
 | Retention and erasure, including findings and derived data | Tested | Integration tests |
 | Token hashing, listing without secrets, immediate revocation | Tested | Integration tests |
-| Browser security headers (CSP etc.) | Tested | Integration test; e2e asserts no CSP violations |
+| API security headers (`default-src 'none'`, `frame-ancestors 'none'`, `no-store`; no browser surface) | Tested | Integration test |
 | RLS on canonical tenant tables; split DB roles; SSO/MFA; rate limiting; field encryption | **Missing** | See [threat-model.md](threat-model.md) |
 | HIPAA compliance | **Not claimed** | See the threat model's final section |
+
+## Query workspace and field policy
+
+| Capability | Status | Evidence / note |
+|---|---|---|
+| Natural-language question → untrusted SQL proposal → validation → explicit execution; results equal independent SQL | Tested | Scenario K; Scenario O (native) |
+| Provider abstraction: deterministic (default), Anthropic, none; unavailable provider fails with `503` and manual SQL keeps working | Tested (deterministic, unavailable) | Scenario K. **The live Anthropic path is Unverified here**: the supplied key needs `ANTHROPIC_WORKSPACE_ID`, which was not available, so the request returned a 400 (handled, surfaced as `provider_unavailable`). |
+| AST allowlist validator: single read-only `SELECT`, functions, casts, names, limits; fails closed | Tested † | Unit tests (12 groups); Scenario N1 (24 attacks) |
+| Restricted fields have no route into results (aliases, joins, subqueries, CTEs, aggregates, ordering, previews, history, exports, errors) | Tested † | Scenarios L, N; mutations `validator-restricted-check-removed`, `history-not-withheld` |
+| Database enforcement independent of the validator: query login without privileges, per-tenant per-role roles, column grants mirroring policy, RLS, read-only | Tested † | Scenario N2 (validator bypassed); Scenario L (grants); mutation `hidden-columns-granted` |
+| Re-validation at execution against the current policy | Tested † | Scenario K; mutation `execute-without-revalidation` |
+| Timeouts, cancellation, cost limit, row and byte caps, concurrency limits | Tested | Scenarios N4, N5; [benchmark.md](benchmark.md) |
+| Field sensitivity and redaction managed by stewards/admins, versioned, audited; stewards cannot widen | Tested † | Scenario M; mutations `steward-may-widen`, `sensitivity-does-not-mask` |
+| One resolver redacts every surface (query results, records, lineage incl. raw source, exceptions, findings, extracts, contracts, metrics, BI views) | Tested † | Scenarios L, M, O; mutations `mask-rewrite-skipped`, `records-unredacted` |
+| Audit distinguishes proposed from executed SQL; no values in audit | Tested | Scenarios K, L (SSN scan of the audit trail) |
+| Concurrency limits across several API replicas | **Missing** | In-memory per process (threat model) |
+| Small-cell suppression of aggregates | **Missing** | Threat model |
+
+## Native client
+
+| Capability | Status | Evidence / note |
+|---|---|---|
+| Rust/GPUI client replaces the React dashboard; all former views plus query workspace, history, field policies, records, audit | Tested | Native e2e (Scenarios J native, O) |
+| Views follow the token's permissions; server remains authoritative | Tested | Native e2e (reporter, operator, approver, steward, admin) |
+| API calls never block the UI thread; large results virtualized | Tested (measured) | Native e2e: no frame gap over 1 s while a long-running query executes (measured max ≈ 0.1 s); 5,000-row scroll |
+| Rust API client decodes every endpoint for every role | Tested | `native/crates/clearline-client/tests/backend.rs`, run by the e2e suite |
+| Linux (X11) build and run | Tested | CI and local |
+| macOS and Windows builds | **Unverified** | Supported by GPUI; not built here |
+| Rendering performance with a GPU | **Unverified** | Measured only with software Vulkan (lavapipe) |
 
 ## Reporting
 
@@ -84,7 +113,7 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 | Read-only SQL views, BI role scoping, `rpt_trusted_*` views | Tested | Scenarios G, J |
 | CSV extracts: explicit schema, timestamps, filters, checksum, audit | Tested | Scenarios A, J |
 | Documented metric definitions | Implemented | [metrics.md](metrics.md) generated from contracts and code |
-| Declared metrics and operations totals equal independent SQL, ground truth and the dashboard | Tested | Scenario J; `test/e2e/dashboard.test.ts`. Freshness, latency percentiles, the daily series and exception-report contents are not independently checked. |
+| Declared metrics and operations totals equal independent SQL, ground truth and the native client | Tested | Scenario J; `test/e2e/native.test.ts`. Freshness, latency percentiles, the daily series and exception-report contents are not independently checked. |
 
 ## Operations and delivery
 
@@ -92,13 +121,13 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 |---|---|---|
 | Docker Compose startup and demo against the stack | Tested | CI `container` job; local runs in development |
 | Versioned migrations with checksums | Tested | Every run migrates fresh databases; checksum-mismatch detection is implemented but untested |
-| CI runs typecheck, audits, unit, integration, scenario, mutation and e2e tests, and fails on failure | Tested | GitHub Actions; see [test-results.md](test-results.md) for the run |
+| CI runs typecheck, audits, unit, integration, scenario, mutation, native build/tests and native e2e, and fails on failure | Tested | GitHub Actions; see [test-results.md](test-results.md) for the run |
 | Dependency and secret scanning | Implemented | `npm audit` (high+), dependency review on PRs, gitleaks with an explicit allow-list |
 | Liveness, readiness, Prometheus metrics | Tested | Integration test |
 | Structured logs with correlation and run ids | Implemented | Emitted on every path; no test asserts log content beyond the safety unit test |
 | Configurable resource and timeout limits | Implemented | [deployment.md](deployment.md); Compose CPU and memory limits |
 | Backup, restore, recovery procedures | Implemented | [runbook.md](runbook.md); restore executed once in development (counts and totals matched); not automated |
-| Benchmark with methodology | Implemented | [benchmark.md](benchmark.md); one 2-vCPU machine |
+| Benchmark with methodology | Implemented | [benchmark.md](benchmark.md): ingestion, query workspace, native client; one 4-vCPU machine without a GPU |
 | More than 100k rows per batch, or 200k rows across parallel workers | **Unverified** | Not measured |
 | Multiple API instances behind a load balancer | **Unverified** | Stateless by design; not run |
 | Multi-day soak test (memory, connection churn) | **Unverified** | Not run |
@@ -136,7 +165,7 @@ An independent reviewer read an earlier draft against the code. Its findings, an
 | Dataset-check failures never affected trust | Fixed: metrics and extracts are qualified † |
 | Sensitive fields could be declared filterable | Fixed: rejected by validation |
 | Erasure left keys in access audit and findings | Fixed: keys hashed in access audit; findings deleted. Filter literals in `export_log.params` remain (gap) |
-| Dashboard computed its own verdict | Fixed: the verdict comes from the API |
+| Dashboard computed its own verdict | Fixed: the verdict comes from the API (the native client keeps this rule) |
 | Duplicated orphan SQL | Fixed: shared `orphanWhere` |
 | Plan impact double-counted rows | Fixed: distinct count |
 | Edge-case inputs returned 500 | Fixed: 4xx; tested |

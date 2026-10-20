@@ -16,8 +16,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..').re
 
 export const DEV_TOKENS = {
   platform: 'cl_dev_platform_admin',
-  northwind: { admin: 'cl_dev_northwind_admin', approver: 'cl_dev_northwind_approver', operator: 'cl_dev_northwind_operator', reporter: 'cl_dev_northwind_reporter' },
-  bluefin: { admin: 'cl_dev_bluefin_admin', approver: 'cl_dev_bluefin_approver', operator: 'cl_dev_bluefin_operator', reporter: 'cl_dev_bluefin_reporter' },
+  northwind: { admin: 'cl_dev_northwind_admin', approver: 'cl_dev_northwind_approver', steward: 'cl_dev_northwind_steward', operator: 'cl_dev_northwind_operator', reporter: 'cl_dev_northwind_reporter' },
+  bluefin: { admin: 'cl_dev_bluefin_admin', approver: 'cl_dev_bluefin_approver', steward: 'cl_dev_bluefin_steward', operator: 'cl_dev_bluefin_operator', reporter: 'cl_dev_bluefin_reporter' },
 } as const;
 
 export async function seed(opts: { contracts?: boolean } = {}) {
@@ -43,6 +43,7 @@ export async function seed(opts: { contracts?: boolean } = {}) {
     const tenantAdmin: Principal = { actor: `${t.id}-admin`, tokenId: 0, tenantId: t.id, role: 'admin', correlationId: 'seed' };
     await issueToken(tenantAdmin, t.id, `${t.id}-operator`, 'operator', toks.operator);
     await issueToken(tenantAdmin, t.id, `${t.id}-reporter`, 'reporter', toks.reporter);
+    await issueToken(tenantAdmin, t.id, `${t.id}-steward`, 'steward', toks.steward);
     if (opts.contracts !== false) {
       const doc = JSON.parse(await readFile(path.join(root, 'contracts', t.id, 'v1.json'), 'utf8'));
       const admin: Principal = { actor: `${t.id}-admin`, tokenId: 0, tenantId: t.id, role: 'admin', correlationId: 'seed' };

@@ -35,7 +35,7 @@ Any of the above must preserve these invariants, each covered by an automated sc
 - No duplicate business effects from redelivery (C).
 - Deterministic, contract-versioned transformation with per-record lineage (A, B, E, H).
 - Tenant isolation and redaction in every serving store (G). **A warehouse copy is a new place this must be proven.**
-- Dashboard numbers equal independently computed numbers (J).
+- Numbers shown by the client equal independently computed numbers (J).
 
 Keep the scenario suite as the acceptance gate for any architectural change: if a new component cannot pass A–J, it is not ready.
 

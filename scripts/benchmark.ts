@@ -9,11 +9,17 @@
 
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { cpus, totalmem, platform, release } from 'node:os';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// BENCH_RENDER_ONLY=1 re-renders docs/benchmark.md from the saved results without measuring.
+if (process.env.BENCH_RENDER_ONLY === '1') {
+  writeFileSync(path.join(ROOT, 'docs/benchmark.md'), renderReport(JSON.parse(readFileSync(path.join(ROOT, 'test-results/benchmark.json'), 'utf8'))));
+  console.log('wrote docs/benchmark.md');
+  process.exit(0);
+}
 const DB = process.env.BENCH_DATABASE_NAME ?? 'clearline_bench';
 const HOST = process.env.PGHOST_URL ?? 'postgres://clearline:clearline@localhost:5432';
 process.env.DATABASE_URL = `${HOST}/${DB}`;
@@ -165,7 +171,62 @@ function renderReport(r: any): string {
     `- In the parallel run, **${Math.round((p.submit_wall_ms / p.wall_ms) * 100)}% of wall time was spent submitting** from a single sequential client, and each batch committed ${p.batch_e2e_s_p50} s (median) after it arrived. Workers kept up with intake; the measured bottleneck was the single-client intake path, not processing. Concurrent submitters were not measured.`,
     `- The machine has ${e.cpu_count} vCPUs shared by the API, ${p.workers} worker processes and PostgreSQL, so the parallel figure is not a per-worker scaling measurement. Measuring scale-out needs a larger host or a separate database server.`,
     `- Failure rate: ${p.failed_batches} of ${p.batches} parallel batches and 0 of ${r.single_worker.length} single-worker batches failed. Deliberately invalid rows were quarantined exactly as expected in every batch.`, '',
-    '## Reproduce', '', '```sh', 'BENCH_PUBLISH=1 npm run benchmark     # needs PG_ADMIN_URL able to create databases', '# smaller: BENCH_SIZES=1000,5000 BENCH_WORKERS=2 BENCH_PARALLEL_BATCHES=4 BENCH_PARALLEL_ROWS=2000 npm run benchmark', '```', '',
+    '## Reproduce', '', '```sh', 'BENCH_PUBLISH=1 npm run benchmark     # needs PG_ADMIN_URL able to create databases', 'BENCH_RENDER_ONLY=1 npm run benchmark  # re-render this file from test-results/*.json', '# smaller: BENCH_SIZES=1000,5000 BENCH_WORKERS=2 BENCH_PARALLEL_BATCHES=4 BENCH_PARALLEL_ROWS=2000 npm run benchmark', '```', '',
     'CI runs a small smoke configuration on every pull request to keep the script working. CI timings are not published, because shared runners are too noisy to compare.', '',
+    ...queryReport(), ...nativeReport(),
   ].join('\n');
+}
+
+// Sections for the query workspace and the native client, from the latest results of
+// `npm run benchmark:query` and `npm run test:e2e` (run those first to refresh them).
+function readResult(name: string): any { const f = path.join(ROOT, 'test-results', name); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; }
+function queryReport(): string[] {
+  const q = readResult('benchmark-query.json');
+  if (!q) return [];
+  const row = (k: string, x: any, extra = '') => `| ${k} | ${x.n} | ${x.p50_ms} | ${x.p95_ms} | ${x.max_ms} |${extra}`;
+  const LABEL: Record<string, string> = {
+    simple: 'Filtered count', grouped: 'Grouped aggregate', join_subquery: 'Anti-join (NOT EXISTS)', cte_masked: 'CTE + join, masked output', rejected_probe: 'Rejected (restricted field in LIKE)',
+    nl_question: 'Natural-language question (deterministic provider)', sql_grouped: 'SQL, grouped aggregate', sql_rejected: 'SQL, rejected',
+    count_100k: `count(*) over ${q.dataset.claims.toLocaleString('en-US')} claims`, grouped_by_month_status: 'Grouped by month and status', orphans_anti_join: 'Orphan claims (anti-join)',
+    cte_join_masked_5000: 'CTE + join, 5,000 rows, masked column', wide_5000_rows: '7 columns, capped at 5,000 rows', preview_20: 'Preview (20 rows)',
+  };
+  return [
+    '## Query workspace', '',
+    `<!-- From test-results/benchmark-query.json (\`npm run benchmark:query\`, ${q.generated_at}). -->`, '',
+    `Same machine. Dataset: ${q.dataset.members.toLocaleString('en-US')} members and ${q.dataset.claims.toLocaleString('en-US')} claims loaded through the API; reporter role; ${q.configuration.provider} provider; default limits (timeout ${q.configuration.QUERY_TIMEOUT_MS}, row cap ${q.configuration.QUERY_MAX_ROWS}, ${q.configuration.QUERY_MAX_CONCURRENT_PER_TENANT} concurrent per tenant). Times are client-observed over loopback HTTP unless noted.`, '',
+    '**Validation** (parse, allowlist and lineage checks, masking rewrite, deparse and re-parse; in process, no database):', '',
+    '| Query | n | p50 ms | p95 ms | max ms |', '|---|---:|---:|---:|---:|',
+    ...Object.entries(q.validate).map(([k, x]) => row(LABEL[k] ?? k, x)), '',
+    '**Proposal** (`POST /queries/proposals`: catalog for the role, provider, validation, `EXPLAIN` estimate, persistence, three audit events):', '',
+    '| Request | n | p50 ms | p95 ms | max ms |', '|---|---:|---:|---:|---:|',
+    ...Object.entries(q.propose).map(([k, x]) => row(LABEL[k] ?? k, x)), '',
+    '**Execution** (`POST …/execute`: re-validation, cost check, query role, read-only transaction, result encoding, audit):', '',
+    '| Query | n | p50 ms | p95 ms | max ms | Rows | Truncated | Response | Server ms |', '|---|---:|---:|---:|---:|---:|---|---:|---:|',
+    ...Object.entries(q.execute).map(([k, x]: [string, any]) => row(LABEL[k] ?? k, x, ` ${x.rows} | ${x.truncated ? 'yes' : 'no'} | ${x.response_bytes < 10240 ? `${x.response_bytes} B` : `${(x.response_bytes / 1024).toFixed(0)} KiB`} | ${x.server_duration_ms} |`)), '',
+    '**Concurrency** (a self-join over all claims, fired simultaneously; per-tenant limit 2):', '',
+    '| Simultaneous | Ran | Refused (429) | Wall ms | Server ms per run |', '|---:|---:|---:|---:|---|',
+    ...Object.entries(q.concurrent).map(([k, x]: [string, any]) => `| ${parseInt(k)} | ${x.ran} | ${x.refused_429} | ${x.wall_ms} | ${x.server_ms.join(', ')} |`), '',
+    '- Validation is sub-millisecond at the median; proposal cost is dominated by the database round trips (catalog, `EXPLAIN`, inserts, audit), not by parsing.',
+    '- Requests over the concurrency limit are refused immediately with `429 query_concurrency_limit` rather than queued, so a burst cannot build an unbounded backlog.',
+    '- A live model provider adds its own latency to proposals (not measured here: the run uses the deterministic provider so it is reproducible and needs no credentials).', '',
+    '```sh', 'npm run benchmark:query                     # QBENCH_CLAIMS=20000 QBENCH_ITER=50 for a quicker run', '```', '',
+  ];
+}
+function nativeReport(): string[] {
+  const n = readResult('native-perf.json');
+  if (!n) return [];
+  const f = (x: any) => `${x.p50_ms} / ${x.p95_ms} / ${x.max_ms} ms (${x.fps_mean} fps mean, n=${x.n})`;
+  return [
+    '## Native client', '',
+    `<!-- From test-results/native-perf.json (\`npm run test:e2e\`, ${n.generated_at}). -->`, '',
+    'Release build of the GPUI client on the same machine, **without a GPU**: Xvfb + Mesa lavapipe (software Vulkan), window 1440×920. Timings are taken from `on_next_frame`, i.e. after GPUI has actually drawn. Software rasterization dominates frame time and scales with window area (the same scroll at 640×400 ran at about 60 fps), so these are pessimistic for a desktop with a GPU.', '',
+    '| Measurement | Result |', '|---|---|',
+    `| Process start → first frame | ${n.startup_ms} ms (spawn → ready event ${n.launch.spawn_to_ready_ms} ms) |`,
+    `| 5,000-row result: request → first frame with rows | ${n.large_result_request_to_frame_ms} ms (includes the API round trip) |`,
+    `| Scrolling 5,000 rows, frame interval p50 / p95 / max | ${f(n.scroll_5000_rows)} |`,
+    `| Typing in the SQL editor while a query runs | ${f(n.typing_while_query_runs)} |`,
+    `| Typing in the SQL editor, idle | ${f(n.typing_idle)} |`, '',
+    `- The UI thread is never blocked by a running query: API calls run on the background executor, and while a long-running query (a three-way cross join over claims) was executing, the longest frame interval was ${n.typing_while_query_runs.max_ms} ms (the e2e test fails above 1,000 ms). Frames are slower than idle typing (p50 ${n.typing_while_query_runs.p50_ms} vs ${n.typing_idle.p50_ms} ms) because the API, PostgreSQL and the software rasterizer share the machine's CPUs during the query.`,
+    '- The grid is virtualized: only visible rows are laid out, so scroll cost does not grow with the result size.', '',
+  ];
 }

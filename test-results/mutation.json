@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-19T22:43:55.177Z",
-  "mutations": 14,
-  "killed": 14,
+  "generated_at": "2026-10-20T00:42:03.481Z",
+  "mutations": 22,
+  "killed": 22,
   "survived": 0,
   "results": [
     {
@@ -17,7 +17,7 @@
         "Scenario D: invalid records are quarantined with actionable errors and excluded from metrics",
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 4
+      "seconds": 5
     },
     {
       "id": "route-tenant-check-removed",
@@ -30,7 +30,7 @@
       "failing_tests": [
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
       ],
-      "seconds": 2
+      "seconds": 4
     },
     {
       "id": "data-layer-tenant-guard-removed",
@@ -43,7 +43,7 @@
       "failing_tests": [
         "data layer refuses a tenant transaction that does not match the request principal (independent of route checks)"
       ],
-      "seconds": 2
+      "seconds": 4
     },
     {
       "id": "idempotency-removed",
@@ -56,7 +56,7 @@
       "failing_tests": [
         "Scenario C: duplicate submissions have no duplicate business effects"
       ],
-      "seconds": 2
+      "seconds": 3
     },
     {
       "id": "redaction-removed",
@@ -71,7 +71,7 @@
         "Scenario A: valid batch flows from source row to metric and extract",
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
       ],
-      "seconds": 4
+      "seconds": 7
     },
     {
       "id": "control-count-ignored",
@@ -84,7 +84,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 2
+      "seconds": 3
     },
     {
       "id": "untrusted-versions-count-as-duplicates",
@@ -97,7 +97,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 2
+      "seconds": 4
     },
     {
       "id": "trusted-view-uses-current-only",
@@ -110,7 +110,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 2
+      "seconds": 3
     },
     {
       "id": "self-approval-allowed",
@@ -123,7 +123,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 2
+      "seconds": 3
     },
     {
       "id": "platform-admin-escalation",
@@ -136,7 +136,7 @@
       "failing_tests": [
         "platform admin cannot escalate into tenant data: bootstrap-only token issuance and revocation"
       ],
-      "seconds": 2
+      "seconds": 3
     },
     {
       "id": "migration-drift-unchecked",
@@ -149,7 +149,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 3
+      "seconds": 5
     },
     {
       "id": "queued-batch-uses-superseded-contract",
@@ -162,7 +162,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 3
+      "seconds": 5
     },
     {
       "id": "dataset-checks-ignored-by-metrics",
@@ -175,7 +175,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 2
+      "seconds": 4
     },
     {
       "id": "audit-floor-removed",
@@ -188,7 +188,123 @@
       "failing_tests": [
         "audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor"
       ],
-      "seconds": 2
+      "seconds": 4
+    },
+    {
+      "id": "validator-restricted-check-removed",
+      "protects": "restricted fields cannot be compared, sorted, grouped, aggregated or derived",
+      "file": "src/query/validate.ts",
+      "tests": [
+        "test/unit/query-validate.test.ts",
+        "test/scenarios/n-tenant-isolation-inference.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions",
+        "Scenario N4: error messages, query history and exports disclose nothing",
+        "filter-only fields: relationship joins and null tests only; never returned, compared, sorted, grouped or aggregated",
+        "masked fields are returned only in redacted form, computed by the database",
+        "relationship joins between restricted keys are allowed only along declared relationships"
+      ],
+      "seconds": 9
+    },
+    {
+      "id": "mask-rewrite-skipped",
+      "protects": "masked fields are returned only in the redacted form computed by the database",
+      "file": "src/query/validate.ts",
+      "tests": [
+        "test/scenarios/l-role-restricted-field.test.ts",
+        "test/scenarios/m-sensitivity-redaction.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario L: a restricted field cannot be obtained by a role that may not see it",
+        "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
+      ],
+      "seconds": 8
+    },
+    {
+      "id": "hidden-columns-granted",
+      "protects": "the database grants a query role no column its role may not use",
+      "file": "src/query/surface.ts",
+      "tests": [
+        "test/scenarios/l-role-restricted-field.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario L: a restricted field cannot be obtained by a role that may not see it"
+      ],
+      "seconds": 5
+    },
+    {
+      "id": "steward-may-widen",
+      "protects": "policy:manage may only tighten a field policy",
+      "file": "src/policy/fields.ts",
+      "tests": [
+        "test/scenarios/m-sensitivity-redaction.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
+      ],
+      "seconds": 6
+    },
+    {
+      "id": "sensitivity-does-not-mask",
+      "protects": "a sensitive field is redacted for roles outside its unmask list",
+      "file": "src/policy/fields.ts",
+      "tests": [
+        "test/unit/policy.test.ts",
+        "test/scenarios/m-sensitivity-redaction.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail",
+        "contract defaults reproduce the pre-existing rule: pii/phi sensitive, unmasked for admins only"
+      ],
+      "seconds": 4
+    },
+    {
+      "id": "history-not-withheld",
+      "protects": "query history does not show other users' SQL that the viewer may not use",
+      "file": "src/query/service.ts",
+      "tests": [
+        "test/scenarios/n-tenant-isolation-inference.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario N4: error messages, query history and exports disclose nothing"
+      ],
+      "seconds": 8
+    },
+    {
+      "id": "execute-without-revalidation",
+      "protects": "every execution re-validates the stored SQL under the current policy",
+      "file": "src/query/service.ts",
+      "tests": [
+        "test/scenarios/k-natural-language-sql.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL",
+        "Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed"
+      ],
+      "seconds": 4
+    },
+    {
+      "id": "records-unredacted",
+      "protects": "record listings apply the field policy",
+      "file": "src/reporting/lineage.ts",
+      "tests": [
+        "test/scenarios/m-sensitivity-redaction.test.ts",
+        "test/scenarios/g-privacy-violation.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "Scenario G: cross-tenant and sensitive-export attempts are denied and audited",
+        "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
+      ],
+      "seconds": 7
     }
   ]
 }

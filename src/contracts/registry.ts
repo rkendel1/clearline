@@ -17,6 +17,27 @@ import { planMigration, type MigrationPlan } from './diff.js';
 import type { Contract } from './types.js';
 import { recordHash } from '../transform/engine.js';
 import type { Canonical } from '../transform/coerce.js';
+import { dropQueryViews, syncQuerySurface } from '../query/surface.js';
+import { loadPolicies } from '../policy/fields.js';
+
+/** Fields the BI reporting views must not expose under the current field policies (sensitive, or not fully visible to reporters). */
+async function biExclusions(tx: Tx, tenantId: string, c: Contract): Promise<Map<string, Set<string>>> {
+  const set = await loadPolicies(tx, tenantId, c);
+  const out = new Map<string, Set<string>>();
+  for (const [en, e] of Object.entries(c.entities)) {
+    out.set(en, new Set(Object.keys(e.fields).filter((f) => set.policy(en, f).sensitive || set.access('reporter', en, f) !== 'full')));
+  }
+  return out;
+}
+
+/** Regenerate the tenant's generated views (BI and query) after a field policy change. */
+export async function regenerateViews(tx: Tx, tenantId: string) {
+  const active = await getActiveContract(tx, tenantId);
+  if (!active) return;
+  await dropTenantViews(tx, tenantId);
+  for (const sql of viewsDDL(tenantId, active.document, await biExclusions(tx, tenantId, active.document))) await tx.query(sql);
+  await syncQuerySurface(tx, tenantId);
+}
 
 export interface ContractVersionRow {
   id: number; tenant_id: string; version: string; lifecycle: string; document: Contract; document_hash: string; transform_version: string;
@@ -48,7 +69,7 @@ export async function getActiveContract(tx: Tx, tenantId: string): Promise<Contr
 export async function lockTenantShared(tx: Tx, tenantId: string) {
   await tx.query(`SELECT pg_advisory_xact_lock_shared(hashtext('clearline.tenant.' || $1))`, [tenantId]);
 }
-async function lockTenantExclusive(tx: Tx, tenantId: string) {
+export async function lockTenantExclusive(tx: Tx, tenantId: string) {
   await tx.query(`SELECT pg_advisory_xact_lock(hashtext('clearline.tenant.' || $1))`, [tenantId]);
 }
 
@@ -56,6 +77,7 @@ async function lockTenantExclusive(tx: Tx, tenantId: string) {
 async function dropTenantViews(tx: Tx, tenantId: string) {
   const { rows } = await tx.query(`SELECT table_name FROM information_schema.views WHERE table_schema = $1`, [`t_${tenantId}`]);
   for (const r of rows) await tx.query(`DROP VIEW IF EXISTS ${ident(`t_${tenantId}`)}.${ident(r.table_name)}`);
+  await dropQueryViews(tx, tenantId);
 }
 
 async function addImpact(tx: Tx, tenantId: string, plan: MigrationPlan, prev: Contract | null) {
@@ -148,12 +170,13 @@ async function applyInTx(tx: Tx, tenantId: string, migId: number, p: Principal, 
   await dropTenantViews(tx, tenantId);
   for (const sql of plan.ddl) await tx.query(sql);
   // Views are regenerated before data operations so they reflect the new contract's column set.
-  for (const sql of viewsDDL(tenantId, next.document)) await tx.query(sql);
+  for (const sql of viewsDDL(tenantId, next.document, await biExclusions(tx, tenantId, next.document))) await tx.query(sql);
   const dataCounts: Record<string, number> = {};
   if (plan.data_ops.length) Object.assign(dataCounts, await runDataOps(tx, tenantId, migId, next));
   if (m.from_version_id) await tx.query(`UPDATE core.contract_versions SET lifecycle = 'superseded' WHERE id = $1`, [m.from_version_id]);
   await tx.query(`UPDATE core.contract_versions SET lifecycle = 'active', activated_at = now() WHERE id = $1`, [m.to_version_id]);
   await tx.query(`UPDATE core.contract_migrations SET status = 'applied', applied_at = now(), approved_by = $2, approved_at = CASE WHEN $2::text IS NULL THEN NULL ELSE now() END WHERE id = $1`, [migId, approvedBy]);
+  await syncQuerySurface(tx, tenantId);
   await auditTx(tx, { tenantId, actor: p.actor, role: p.role, action: 'contract.migration.apply', resource: `migration:${migId}`, outcome: 'succeeded', details: { to_version: next.version, ddl_statements: plan.ddl.length, data_ops: plan.data_ops.length, new_record_versions: dataCounts }, correlationId: p.correlationId });
 }
 
@@ -268,8 +291,9 @@ export async function rollbackMigration(p: Principal, tenantId: string, migId: n
     await tx.query(`UPDATE core.contract_versions SET lifecycle = 'active' WHERE id = $1`, [m.from_version_id]);
     const prev = await getContractVersion(tx, Number(m.from_version_id));
     await dropTenantViews(tx, tenantId);
-    for (const sql of viewsDDL(tenantId, prev.document)) await tx.query(sql);
+    for (const sql of viewsDDL(tenantId, prev.document, await biExclusions(tx, tenantId, prev.document))) await tx.query(sql);
     await tx.query(`UPDATE core.contract_migrations SET status = 'rolled_back', rolled_back_at = now() WHERE id = $1`, [migId]);
+    await syncQuerySurface(tx, tenantId);
     await auditTx(tx, { tenantId, actor: p.actor, role: p.role, action: 'contract.migration.rollback', resource: `migration:${migId}`, outcome: 'succeeded', details: { restored_versions: restored }, correlationId: p.correlationId });
     return { id: migId, status: 'rolled_back', restored_versions: restored, active_version: prev.version };
   });

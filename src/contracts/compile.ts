@@ -70,15 +70,19 @@ ${cols.join(',\n')}
   ];
 }
 
-/** Views are fully regenerated for every active contract version. */
-export function viewsDDL(tenant: string, c: Contract): string[] {
+/**
+ * Views are fully regenerated for every active contract version and every field policy change.
+ * `excluded` (entity -> fields) removes further fields from the BI reporting views beyond the
+ * contract's pii/phi classification: fields marked sensitive or restricted by field policy.
+ */
+export function viewsDDL(tenant: string, c: Contract, excluded: Map<string, Set<string>> = new Map()): string[] {
   const s = ident(schemaName(tenant));
   const role = ident(reportingRole(tenant));
   const out: string[] = [];
   for (const [en, e] of Object.entries(c.entities)) {
     const t = table(tenant, en);
     const fields = Object.keys(e.fields).map((f) => `r.${ident(f)}`);
-    const publicFields = Object.entries(e.fields).filter(([, f]) => !SENSITIVE.has(f.sensitivity ?? 'internal')).map(([n]) => `r.${ident(n)}`);
+    const publicFields = Object.entries(e.fields).filter(([n, f]) => !SENSITIVE.has(f.sensitivity ?? 'internal') && !excluded.get(en)?.has(n)).map(([n]) => `r.${ident(n)}`);
     const lineage = `r."_record_id", r."_key", r."_batch_id", r."_raw_record_id", r."_contract_version_id", r."_transform_version", r."_loaded_at", r."_is_late", r."_migration_id", b.trust_status AS "_trust_status"`;
     const from = `FROM ${t} r JOIN core.batches b ON b.id = r."_batch_id" WHERE r."_is_current"`;
     out.push(`DROP VIEW IF EXISTS ${s}.${ident(`current_${en}`)}`);

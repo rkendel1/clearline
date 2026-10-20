@@ -28,7 +28,7 @@ test('operational endpoints: liveness, readiness, metrics, correlation ids', asy
   }
   const r = await ctx.app.inject({ method: 'GET', url: '/api/v1/me', headers: { authorization: `Bearer ${DEV_TOKENS.northwind.reporter}`, 'x-correlation-id': 'test-corr-1' } });
   assert.equal(r.headers['x-correlation-id'], 'test-corr-1');
-  assert.match(String(r.headers['content-security-policy']), /default-src 'self'.*frame-ancestors 'none'/);
+  assert.match(String(r.headers['content-security-policy']), /default-src 'none'.*frame-ancestors 'none'/, 'the API serves no browser content at all');
   assert.equal(r.headers['x-content-type-options'], 'nosniff');
   assert.equal(r.headers['cache-control'], 'no-store', 'API responses are never cached');
   const bad = await ctx.app.inject({ method: 'GET', url: '/api/v1/me', headers: { 'x-correlation-id': 'evil\nheader' } });

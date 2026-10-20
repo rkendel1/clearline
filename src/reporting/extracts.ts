@@ -7,7 +7,9 @@ import { stringify } from 'csv-stringify/sync';
 import { withTenant, ident } from '../platform/db.js';
 import { badRequest, forbidden, notFound } from '../platform/errors.js';
 import { getActiveContract } from '../contracts/registry.js';
-import { SENSITIVE, type Condition, type Contract, type ExtractDef } from '../contracts/types.js';
+import type { Condition, Contract, ExtractDef } from '../contracts/types.js';
+import { loadPolicies, viewable, type FieldViewer } from '../policy/fields.js';
+import { maskValue } from '../policy/mask.js';
 import { stableStringify } from '../contracts/compile.js';
 import { audit, auditTx } from '../control/audit.js';
 import { can, type Principal } from '../control/auth.js';
@@ -18,8 +20,12 @@ import { failingDatasetChecks } from './reports.js';
 export const LINEAGE_COLUMNS = ['_record_id', '_key', '_batch_id', '_contract_version', '_trust_status'] as const;
 export const REDACTED = 'REDACTED';
 
-export function extractSchema(c: Contract, x: ExtractDef) {
+/** Extract columns a role receives: fields it may not see are not part of its extract at all. */
+export const extractFields = (x: ExtractDef, viewer: FieldViewer) => x.fields.filter((f) => viewable(viewer.level(x.entity, f)));
+
+export function extractSchema(c: Contract, x: ExtractDef, viewer: FieldViewer) {
   const e = c.entities[x.entity];
+  const policy = (f: string) => viewer.set.policy(x.entity, f);
   return {
     extract_id: x.id, title: x.title, entity: x.entity, contract_version: c.version, format: 'text/csv; header=present; charset=utf-8',
     columns: [
@@ -28,12 +34,13 @@ export function extractSchema(c: Contract, x: ExtractDef) {
       { name: '_batch_id', type: 'string', description: 'batch that produced this version' },
       { name: '_contract_version', type: 'string', description: 'contract version that produced this version' },
       { name: '_trust_status', type: 'string', description: 'trusted | untrusted (batch reconciliation/quality outcome)' },
-      ...x.fields.map((f) => ({ name: f, type: e.fields[f].type, description: e.fields[f].description ?? null, sensitivity: e.fields[f].sensitivity ?? 'internal',
-        nullable: e.fields[f].nullable ?? true, redacted_by_default: SENSITIVE.has(e.fields[f].sensitivity ?? 'internal'),
+      ...extractFields(x, viewer).map((f) => ({ name: f, type: e.fields[f].type, description: e.fields[f].description ?? null, sensitivity: e.fields[f].sensitivity ?? 'internal',
+        nullable: e.fields[f].nullable ?? true, redacted_by_default: policy(f).sensitive,
+        redaction: viewer.level(x.entity, f) === 'masked' ? policy(f).redaction : policy(f).sensitive ? 'full unless include_sensitive' : null,
         ...(e.fields[f].type === 'decimal' ? { precision: e.fields[f].precision, scale: e.fields[f].scale } : {}),
         ...(e.fields[f].values ? { values: e.fields[f].values } : {}) })),
     ],
-    filterable: x.filterable ?? [],
+    filterable: (x.filterable ?? []).filter((f) => viewer.level(x.entity, f) === 'full'),
     ordering: '_key ascending',
   };
 }
@@ -83,17 +90,31 @@ export async function runExtract(p: Principal, tenant: string, extractId: string
     if (!x) throw notFound(`extract ${extractId}`);
     const failing = (await failingDatasetChecks(tx, tenant, c)).get(x.entity) ?? [];
     const e = c.entities[x.entity];
+    const viewer = (await loadPolicies(tx, tenant, c)).viewer(p.role);
+    const fields = extractFields(x, viewer);
+    // Filtering by a field the role cannot see in full would reveal its values (same rule as the query workspace).
+    for (const f of Object.keys(filters)) if (viewer.level(x.entity, f) !== 'full') throw badRequest('invalid_filter', `"${f}" is not filterable for extract ${x.id} (allowed: ${(x.filterable ?? []).filter((g) => viewer.level(x.entity, g) === 'full').join(', ') || 'none'})`);
     const pr = new Params();
     const from = currentFrom(tenant, x.entity, req.include_untrusted ? 'all' : 'trusted', params.as_of, pr, 'JOIN core.contract_versions cv ON cv.id = r."_contract_version_id"');
     const conds = toCondition(x, c, filters).map((cd) => conditionSql(cd, e, pr));
-    const sql = `SELECT r."_record_id", r."_key", r."_batch_id", cv.version AS "_contract_version", b.trust_status AS "_trust_status", ${x.fields.map((f) => `r.${ident(f)}`).join(', ')}
+    const sql = `SELECT r."_record_id", r."_key", r."_batch_id", cv.version AS "_contract_version", b.trust_status AS "_trust_status"${fields.map((f) => `, r.${ident(f)}`).join('')}
       ${from}${conds.length ? ' AND ' + conds.join(' AND ') : ''}
       ORDER BY r."_key", r."_record_id"`;
     const { rows } = await tx.query(sql, pr.values);
-    const sensitive = new Set(x.fields.filter((f) => SENSITIVE.has(e.fields[f].sensitivity ?? 'internal')));
-    const header = [...LINEAGE_COLUMNS, ...x.fields];
+    // A value is exported as-is only when the role sees it in full AND (it is not sensitive OR sensitive values were explicitly requested and permitted).
+    const level = new Map(fields.map((f) => [f, viewer.level(x.entity, f)]));
+    const sensitive = new Set(fields.filter((f) => viewer.set.policy(x.entity, f).sensitive));
+    const redacted = new Set(fields.filter((f) => level.get(f) === 'masked' || (sensitive.has(f) && !req.include_sensitive)));
+    const header = [...LINEAGE_COLUMNS, ...fields];
     const fmt = (v: unknown) => (v === null || v === undefined ? '' : v instanceof Date ? v.toISOString() : String(v));
-    const body = rows.map((r) => header.map((h) => (sensitive.has(h) && !req.include_sensitive ? REDACTED : fmt(r[h]))));
+    const cell = (h: string, v: unknown) => {
+      if (h === '_key') return fmt(viewer.key(x.entity, e.key, v, REDACTED));
+      if (!redacted.has(h)) return fmt(v);
+      if (v === null || v === undefined) return '';
+      const style = level.get(h) === 'masked' ? viewer.set.policy(x.entity, h).redaction : 'full';
+      return maskValue(fmt(v), style, REDACTED) ?? '';
+    };
+    const body = rows.map((r) => header.map((h) => cell(h, r[h])));
     const csv = stringify([header, ...body]);
     const sha = createHash('sha256').update(csv).digest('hex');
     const exportId = randomUUID();
@@ -101,9 +122,9 @@ export async function runExtract(p: Principal, tenant: string, extractId: string
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
       [exportId, tenant, x.id, active.id, p.actor, p.role, stableStringify(params), params.as_of, rows.length, sha, JSON.stringify(rows.map((r) => [x.entity, Number(r._record_id)]))]);
     await auditTx(tx, { tenantId: tenant, actor: p.actor, role: p.role, action: 'extract.run', resource: `extract:${x.id}`, outcome: 'succeeded',
-      details: { export_id: exportId, rows: rows.length, sha256: sha, params, sensitive_fields: [...sensitive], sensitive_included: !!req.include_sensitive }, correlationId: p.correlationId });
+      details: { export_id: exportId, rows: rows.length, sha256: sha, params, sensitive_fields: [...sensitive], redacted_fields: [...redacted], sensitive_included: !!req.include_sensitive }, correlationId: p.correlationId });
     return { csv, meta: { export_id: exportId, extract_id: x.id, contract_version: active.version, as_of: params.as_of, filters: stableStringify(filters),
-      row_count: rows.length, sha256: sha, redacted_fields: req.include_sensitive ? [] : [...sensitive], trust_scope: req.include_untrusted ? 'all' : 'trusted',
+      row_count: rows.length, sha256: sha, redacted_fields: [...redacted], trust_scope: req.include_untrusted ? 'all' : 'trusted',
       dataset_checks_failing: failing.map((f) => f.check_id) } };
   });
 }
