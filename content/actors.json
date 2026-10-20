@@ -1,0 +1,152 @@
+[
+  {
+    "id": "data-engineer",
+    "name": "Data engineer",
+    "goal": "Build and maintain reliable data pipelines.",
+    "questions": [
+      "Where are incoming records validated?",
+      "What happens when a source contract changes?",
+      "How can I tell why a transformation produced an unexpected result?",
+      "Which components would I change to support a new source?"
+    ],
+    "areas": [
+      "ingest-validate",
+      "transform-rules",
+      "security-governance"
+    ],
+    "components": [
+      "api",
+      "pipeline",
+      "postgres",
+      "evidence"
+    ],
+    "decisions": [
+      "D-postgres",
+      "D-evidence"
+    ]
+  },
+  {
+    "id": "analyst",
+    "name": "Analytics engineer or analyst",
+    "goal": "Produce repeatable, trustworthy metrics.",
+    "questions": [
+      "How is this report calculated?",
+      "Can I save the query and reuse it?",
+      "Can two reports produce conflicting values?",
+      "Can I trace a result back to its calculation?"
+    ],
+    "areas": [
+      "reporting-reconciliation",
+      "governed-sql",
+      "saved-queries"
+    ],
+    "components": [
+      "query",
+      "reporting",
+      "evidence"
+    ],
+    "decisions": [
+      "D-analytics-sql"
+    ]
+  },
+  {
+    "id": "ops",
+    "name": "Operations or business stakeholder",
+    "goal": "Identify changes that need attention.",
+    "questions": [
+      "Which metrics changed unexpectedly?",
+      "Can a finding be delivered automatically?",
+      "What evidence supports this alert?",
+      "Did the scheduled analysis complete?"
+    ],
+    "areas": [
+      "ml-analysis",
+      "scheduling-delivery",
+      "reporting-reconciliation"
+    ],
+    "components": [
+      "analytics",
+      "delivery",
+      "evidence"
+    ],
+    "decisions": [
+      "D-sync",
+      "D-ml"
+    ]
+  },
+  {
+    "id": "ml-engineer",
+    "name": "ML engineer",
+    "goal": "Build useful analyses without losing control of data quality and operations.",
+    "questions": [
+      "What data does an analysis consume?",
+      "Which algorithm produced a result?",
+      "How is performance evaluated?",
+      "How is a model-generated explanation distinguished from a verified result?"
+    ],
+    "areas": [
+      "ml-analysis",
+      "grounded-assistant"
+    ],
+    "components": [
+      "analytics",
+      "provider"
+    ],
+    "decisions": [
+      "D-ml",
+      "D-retrieval"
+    ]
+  },
+  {
+    "id": "architect",
+    "name": "Data or platform architect",
+    "goal": "Make sound end-to-end architecture decisions.",
+    "questions": [
+      "Where is the authoritative data stored?",
+      "Why is this a separate boundary?",
+      "What would change at higher volume?",
+      "Where are authorization and data-quality controls enforced?"
+    ],
+    "areas": [
+      "security-governance",
+      "scheduling-delivery",
+      "ingest-validate"
+    ],
+    "components": [
+      "api",
+      "postgres",
+      "pipeline",
+      "query"
+    ],
+    "decisions": [
+      "D-postgres",
+      "D-monolith",
+      "D-security"
+    ]
+  },
+  {
+    "id": "leader",
+    "name": "Technical leader or executive",
+    "goal": "Understand business value, risk and investment.",
+    "questions": [
+      "What problem does this solve?",
+      "What is implemented today?",
+      "What evidence shows correctness?",
+      "What would productionizing for a regulated enterprise require?"
+    ],
+    "areas": [
+      "reporting-reconciliation",
+      "security-governance",
+      "grounded-assistant"
+    ],
+    "components": [
+      "reporting",
+      "assistant",
+      "evidence"
+    ],
+    "decisions": [
+      "D-postgres",
+      "D-security"
+    ]
+  }
+]

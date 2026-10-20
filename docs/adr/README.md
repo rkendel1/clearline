@@ -14,7 +14,9 @@
 | [0010](0010-separation-of-duties.md) | Separation of duties: approver role, bootstrap-only platform admin | Accepted (after independent review) |
 | [0011](0011-governed-natural-language-sql.md) | Natural-language SQL as an untrusted proposal behind a structural validator and a database boundary | Accepted |
 | [0012](0012-field-policy-model.md) | Field access and sensitivity are separate policy dimensions, enforced by one server-side resolver | Accepted |
-| [0013](0013-native-client.md) | A native Rust/GPUI client replaces the React dashboard | Accepted |
+| [0013](0013-native-client.md) | A native Rust/GPUI client replaces the React dashboard | Accepted; browser statement superseded by 0017 |
 | [0014](0014-saved-analytics-authority.md) | Saving, scheduling and delivering a query grants nothing | Accepted |
 | [0015](0015-durable-scheduler.md) | Durable scheduling in PostgreSQL, executed by the worker | Accepted |
 | [0016](0016-deterministic-analysis.md) | Deterministic, explainable analysis first; models may only narrate | Accepted |
+| [0017](0017-web-interface.md) | A web interface beside the native client, served by the API | Accepted |
+| [0018](0018-grounded-assistant.md) | A grounded assistant: retrieval for explanation, validated tools for facts | Accepted (retrieval built; data tools planned) |

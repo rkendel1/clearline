@@ -8,3 +8,4 @@ native/target
 native
 **/node_modules
 web/dist
+.env.local

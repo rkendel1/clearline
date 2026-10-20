@@ -19,7 +19,7 @@ export function SignIn({ onSignedIn, expired }: { onSignedIn: (m: Me) => void; e
   return (
     <div className="signin">
       <form onSubmit={submit}>
-        <Section title="Clearline">
+        <Section title="Clearline" actions={<a href="#/">← About Clearline</a>}>
           <p className="muted">Sign in with an API token. It is held in this tab's memory only; closing or reloading the tab signs you out.</p>
           {expired && <Note tone="warn">Your token was rejected or has been revoked. Sign in again.</Note>}
           <Field label="API token"><input type="password" autoComplete="off" spellCheck={false} value={token} onChange={(e) => setToken(e.target.value)} autoFocus /></Field>

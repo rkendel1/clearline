@@ -5,6 +5,18 @@ import { useAction, useLoad } from '../lib/useLoad';
 import { Async, Button, ErrorBox, Facts, Field, Grid, Json, Note, Page, Section, Signal, Table, Tag } from '../ui';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+// Questions the built-in offline provider (rules@1) maps; a model-backed provider accepts free text.
+const EXAMPLES = [
+  'Daily paid claim amounts, claim counts and average payment for the last 30 days',
+  'Weekly payment totals for the last 26 weeks',
+  'Show the total paid amount by tenant for the last month',
+  'Compare paid amounts across the last three reporting periods',
+  'Find claims that reference members who have not arrived',
+  'Show me batches with reconciliation failures',
+  'List claims with amounts above $5,000, excluding sensitive member information',
+  'List members with their ssn and last name',
+];
+
 export function Workspace({ seed }: { seed: string | null }) {
   const catalog = useLoad((s) => request<any>('GET', t('/queries/catalog'), undefined, { signal: s }), []);
   const [question, setQuestion] = useState('');
@@ -39,12 +51,19 @@ export function Workspace({ seed }: { seed: string | null }) {
             <textarea rows={3} value={question} onChange={(e) => setQuestion(e.target.value)} placeholder="e.g. What is the total paid amount by claim status?" aria-label="Question" />
             <div><Button primary busy={ask.busy} disabled={!question.trim()} onClick={() => ask.run()}>Propose SQL</Button></div>
             <ErrorBox error={ask.error} />
+            {catalog.data?.provider.id === 'deterministic' && (
+              <details open={proposal?.validation?.issues?.[0]?.code === 'cannot_answer'}>
+                <summary>This server uses the built-in offline provider: it understands a fixed set of questions</summary>
+                <p className="muted small">Try one of these, write SQL on the right, or start the API with <span className="mono">NL_SQL_PROVIDER=anthropic</span> and an API key for free-text questions.</p>
+                <div className="list">{EXAMPLES.map((e) => <button key={e} onClick={() => setQuestion(e)}>{e}</button>)}</div>
+              </details>)}
           </Section>
           <Section title="Data you may query" hint="Tables and columns for your role. Masked columns are redacted in results.">
             <Async load={catalog}>{(c) => (<>
               {c.tables.map((tb: any) => (
                 <details key={tb.name}><summary><strong>{tb.name}</strong> <span className="muted small">{tb.kind}</span></summary>
                   <p className="muted small">{tb.description}</p>
+                  <Button onClick={() => { setSql(`SELECT ${tb.columns.filter((x: any) => x.access === 'full' || x.access === 'masked').slice(0, 8).map((x: any) => x.name).join(', ') || '*'}\nFROM ${tb.name}\nLIMIT 100`); setProposal(null); setResult(null); }}>Start SQL from this table</Button>
                   <Table rows={tb.columns} cols={[{ head: 'Column', cell: (x: any) => <span className="mono">{x.name}</span> }, { head: 'Type', cell: (x: any) => x.type }, { head: 'Access', cell: (x: any) => <Signal status={x.access} /> }]} />
                 </details>))}
               {c.relationships?.length > 0 && <Json value={c.relationships.map((r: any) => `${r.from.table}.${r.from.column} → ${r.to.table}.${r.to.column}`)} label="Relationships" />}

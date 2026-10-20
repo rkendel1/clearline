@@ -1,44 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-	<testcase name="Scenario A: valid batch flows from source row to metric and extract" time="1.375044" classname="test"/>
-	<testcase name="Scenario B: two tenants, two canonical models, one codebase" time="4.770548" classname="test"/>
-	<testcase name="Scenario C: duplicate submissions have no duplicate business effects" time="1.107932" classname="test"/>
-	<testcase name="Scenario D: invalid records are quarantined with actionable errors and excluded from metrics" time="0.924994" classname="test"/>
-	<testcase name="Scenario E: corrections supersede, late versions become history, conflicts are quarantined" time="1.508026" classname="test"/>
-	<testcase name="Scenario F1: worker killed mid-transaction recovers safely after restart" time="8.005915" classname="test"/>
-	<testcase name="Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly" time="6.036564" classname="test"/>
-	<testcase name="Scenario G: cross-tenant and sensitive-export attempts are denied and audited" time="0.932133" classname="test"/>
-	<testcase name="Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely" time="2.501078" classname="test"/>
-	<testcase name="Scenario I: discrepancies are detected, explained, and removed from trusted outputs" time="1.566850" classname="test"/>
-	<testcase name="Scenario J: reports, SQL views and extracts agree with independent queries and ground truth" time="1.525182" classname="test"/>
-	<testcase name="Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL" time="1.767744" classname="test"/>
-	<testcase name="Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed" time="0.142598" classname="test"/>
-	<testcase name="Scenario L: a restricted field cannot be obtained by a role that may not see it" time="2.093288" classname="test"/>
-	<testcase name="Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail" time="2.281336" classname="test"/>
-	<testcase name="Scenario N1: cross-tenant access through generated and edited SQL is rejected" time="1.713749" classname="test"/>
-	<testcase name="Scenario N2: the database enforces isolation even if the validator were bypassed" time="0.029232" classname="test"/>
-	<testcase name="Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions" time="0.246967" classname="test"/>
-	<testcase name="Scenario N4: error messages, query history and exports disclose nothing" time="0.230899" classname="test"/>
-	<testcase name="Scenario N5: runaway and unsafe queries fail closed (timeout, cancellation, concurrency, limits)" time="3.431531" classname="test"/>
-	<testcase name="Scenario P: create, parameterize, execute, version, duplicate, share and archive a saved query" time="2.066080" classname="test"/>
-	<testcase name="Scenario Q1: a daily schedule runs at its due time, exactly once per occurrence, also when schedulers race" time="1.650959" classname="test"/>
-	<testcase name="Scenario Q2: an interrupted run is recovered by another scheduler and completes; missed occurrences do not burst" time="0.252723" classname="test"/>
-	<testcase name="Scenario Q3: pause, resume and cancel; time zones and daylight saving are explicit" time="0.152276" classname="test"/>
-	<testcase name="Scenario Q4: lost authorization blocks the next run; a failed query is never reported as delivered" time="0.660379" classname="test"/>
-	<testcase name="Scenario Q5: the scheduler runs in the worker process without any client, and survives a restart" time="3.206528" classname="test"/>
-	<testcase name="Scenario R1: one run delivered to in-app, email (with CSV), a signed webhook (after transient failures) and an export" time="1.690495" classname="test"/>
-	<testcase name="Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query" time="1.089572" classname="test"/>
-	<testcase name="Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered" time="0.370980" classname="test"/>
-	<testcase name="Scenario R4: test deliveries report exactly what happened" time="0.032955" classname="test"/>
-	<testcase name="Scenario R5: a worker that dies while sending: the delivery is recovered after its lease, sent once, and audited" time="0.126599" classname="test"/>
-	<testcase name="Scenario S1: time-series anomaly detection finds the planted spike, with computed, grounded evidence" time="1.618686" classname="test"/>
-	<testcase name="Scenario S2: weekly forecast evaluated on held-out weeks it never saw, with rolling-origin backtest metrics" time="0.119291" classname="test"/>
-	<testcase name="Scenario S3: outlier detection ranks the seeded claims first, compared within their procedure" time="0.405932" classname="test"/>
-	<testcase name="Scenario S4: sensitive or redacted fields cannot enter an analysis; insufficient data is explicit" time="0.340119" classname="test"/>
-	<testcase name="Scenario S5: model-written summaries are checked against computed evidence and never replace it" time="0.211940" classname="test"/>
-	<testcase name="Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed" time="1.735657" classname="test"/>
-	<testcase name="Scenario T2: webhook destinations cannot target private, loopback, link-local or credentialed endpoints" time="0.025353" classname="test"/>
-	<testcase name="Scenario T3: tenants cannot see each other's saved queries, schedules, runs, notifications or exports" time="0.049054" classname="test"/>
+	<testcase name="Scenario A: valid batch flows from source row to metric and extract" time="2.376162" classname="test"/>
+	<testcase name="Scenario B: two tenants, two canonical models, one codebase" time="2.231524" classname="test"/>
+	<testcase name="Scenario C: duplicate submissions have no duplicate business effects" time="2.846794" classname="test"/>
+	<testcase name="Scenario D: invalid records are quarantined with actionable errors and excluded from metrics" time="0.901176" classname="test"/>
+	<testcase name="Scenario E: corrections supersede, late versions become history, conflicts are quarantined" time="1.142605" classname="test"/>
+	<testcase name="Scenario F1: worker killed mid-transaction recovers safely after restart" time="6.832105" classname="test"/>
+	<testcase name="Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly" time="6.499342" classname="test"/>
+	<testcase name="Scenario G: cross-tenant and sensitive-export attempts are denied and audited" time="1.445544" classname="test"/>
+	<testcase name="Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely" time="2.467834" classname="test"/>
+	<testcase name="Scenario I: discrepancies are detected, explained, and removed from trusted outputs" time="1.000946" classname="test"/>
+	<testcase name="Scenario J: reports, SQL views and extracts agree with independent queries and ground truth" time="3.712065" classname="test"/>
+	<testcase name="Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL" time="4.964042" classname="test"/>
+	<testcase name="Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed" time="0.954668" classname="test"/>
+	<testcase name="Scenario L: a restricted field cannot be obtained by a role that may not see it" time="3.006824" classname="test"/>
+	<testcase name="Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail" time="3.372603" classname="test"/>
+	<testcase name="Scenario N1: cross-tenant access through generated and edited SQL is rejected" time="2.386257" classname="test"/>
+	<testcase name="Scenario N2: the database enforces isolation even if the validator were bypassed" time="0.060808" classname="test"/>
+	<testcase name="Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions" time="0.380637" classname="test"/>
+	<testcase name="Scenario N4: error messages, query history and exports disclose nothing" time="0.339839" classname="test"/>
+	<testcase name="Scenario N5: runaway and unsafe queries fail closed (timeout, cancellation, concurrency, limits)" time="3.713098" classname="test"/>
+	<testcase name="Scenario P: create, parameterize, execute, version, duplicate, share and archive a saved query" time="2.332810" classname="test"/>
+	<testcase name="Scenario Q1: a daily schedule runs at its due time, exactly once per occurrence, also when schedulers race" time="2.088964" classname="test"/>
+	<testcase name="Scenario Q2: an interrupted run is recovered by another scheduler and completes; missed occurrences do not burst" time="0.386184" classname="test"/>
+	<testcase name="Scenario Q3: pause, resume and cancel; time zones and daylight saving are explicit" time="0.693559" classname="test"/>
+	<testcase name="Scenario Q4: lost authorization blocks the next run; a failed query is never reported as delivered" time="1.317231" classname="test"/>
+	<testcase name="Scenario Q5: the scheduler runs in the worker process without any client, and survives a restart" time="3.555394" classname="test"/>
+	<testcase name="Scenario R1: one run delivered to in-app, email (with CSV), a signed webhook (after transient failures) and an export" time="2.486855" classname="test"/>
+	<testcase name="Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query" time="1.922530" classname="test"/>
+	<testcase name="Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered" time="0.635757" classname="test"/>
+	<testcase name="Scenario R4: test deliveries report exactly what happened" time="0.072997" classname="test"/>
+	<testcase name="Scenario R5: a worker that dies while sending: the delivery is recovered after its lease, sent once, and audited" time="0.220157" classname="test"/>
+	<testcase name="Scenario S1: time-series anomaly detection finds the planted spike, with computed, grounded evidence" time="1.713111" classname="test"/>
+	<testcase name="Scenario S2: weekly forecast evaluated on held-out weeks it never saw, with rolling-origin backtest metrics" time="0.325947" classname="test"/>
+	<testcase name="Scenario S3: outlier detection ranks the seeded claims first, compared within their procedure" time="0.654151" classname="test"/>
+	<testcase name="Scenario S4: sensitive or redacted fields cannot enter an analysis; insufficient data is explicit" time="0.577470" classname="test"/>
+	<testcase name="Scenario S5: model-written summaries are checked against computed evidence and never replace it" time="0.328425" classname="test"/>
+	<testcase name="Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed" time="1.959688" classname="test"/>
+	<testcase name="Scenario T2: webhook destinations cannot target private, loopback, link-local or credentialed endpoints" time="0.036016" classname="test"/>
+	<testcase name="Scenario T3: tenants cannot see each other's saved queries, schedules, runs, notifications or exports" time="0.057060" classname="test"/>
 	<!-- tests 39 -->
 	<!-- suites 0 -->
 	<!-- pass 39 -->
@@ -46,5 +46,5 @@
 	<!-- cancelled 0 -->
 	<!-- skipped 0 -->
 	<!-- todo 0 -->
-	<!-- duration_ms 94690.002389 -->
+	<!-- duration_ms 102692.743834 -->
 </testsuites>

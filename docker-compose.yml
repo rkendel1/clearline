@@ -1,5 +1,5 @@
 # Local, reproducible Clearline stack (synthetic data only).
-#   docker compose up -d                 # postgres, migrations, demo seed, api, worker
+#   docker compose up -d                 # postgres, migrations, demo seed, api, worker (reads optional .env.local)
 #   docker compose run --rm demo         # load the reference dataset and print results
 #   native/target/release/clearline --url http://localhost:8080   # desktop client (npm run native:build; tokens in README)
 #   docker compose down -v               # stop and delete all data
@@ -13,6 +13,9 @@ x-app: &app
     args:
       NODE_IMAGE: ${NODE_IMAGE:-node:22-bookworm-slim}
   image: clearline:local
+  env_file:
+    - path: .env.local
+      required: false
   environment: &app-env
     DATABASE_URL: postgres://clearline:${POSTGRES_PASSWORD:-clearline-local-only}@db:5432/clearline
     LOG_LEVEL: info
@@ -25,10 +28,8 @@ x-app: &app
     MAX_ROWS_PER_BATCH: "500000"
     # Query workspace. The application provisions the privilege-less query login with this password.
     QUERY_DB_PASSWORD: ${QUERY_DB_PASSWORD:-clearline-query-local-only}
-    # deterministic (default, no network) | anthropic | none. The key is taken from your shell only.
-    NL_SQL_PROVIDER: ${NL_SQL_PROVIDER:-deterministic}
-    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-    ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+    # NL_SQL_PROVIDER: deterministic (default, no network) | anthropic | none. NL_SQL_PROVIDER, ANTHROPIC_API_KEY and
+    # ANTHROPIC_WORKSPACE_ID are read from .env.local (git-ignored; see env_file below), never from this file.
     # Saved analytics. The scheduler runs in the worker. Email is written to files in the worker
     # container (no mail server needed for the demo); use EMAIL_PROVIDER=smtp with SMTP_URL for real mail.
     EMAIL_PROVIDER: ${EMAIL_PROVIDER:-file}
@@ -39,7 +40,10 @@ x-app: &app
 
 services:
   db:
-    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    # PostgreSQL 16 plus the pgvector extension (assistant retrieval index only); built from db/Dockerfile.
+    # Override POSTGRES_IMAGE to use a prebuilt image that already ships pgvector.
+    build: { context: ./db, dockerfile: Dockerfile }
+    image: ${POSTGRES_IMAGE:-clearline-db:local}
     environment:
       POSTGRES_USER: clearline
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clearline-local-only}
@@ -69,11 +73,22 @@ services:
     depends_on: { migrate: { condition: service_completed_successfully } }
     restart: "no"
 
+  index:
+    <<: *app
+    # Builds or refreshes the assistant's retrieval index (approved documents and content). Re-run it after
+    # documentation changes: docker compose run --rm index. A failure here does not stop the stack; the
+    # assistant then reports that retrieval is unavailable instead of guessing.
+    command: ["node", "dist/src/cli.js", "assistant-index"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: "no"
+
   api:
     <<: *app
     command: ["node", "dist/src/main.js"]
     ports: ["127.0.0.1:${API_HOST_PORT:-8080}:8080"]
-    depends_on: { seed: { condition: service_completed_successfully } }
+    depends_on:
+      seed: { condition: service_completed_successfully }
+      index: { condition: service_completed_successfully, required: false }
     stop_grace_period: 30s
     deploy: { resources: { limits: { cpus: "1", memory: 512m } } }
 

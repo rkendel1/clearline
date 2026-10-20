@@ -1,0 +1,542 @@
+{
+  "status_labels": [
+    "Implemented and verified",
+    "Implemented; verification incomplete",
+    "Partially implemented",
+    "Planned"
+  ],
+  "capabilities": [
+    {
+      "id": "ingest-validate",
+      "name": "Ingestion and validation",
+      "status": "Implemented and verified",
+      "actors": [
+        "data-engineer",
+        "architect"
+      ],
+      "description": "Accepts CSV and JSON batches, applies the tenant's data contract (types, required fields, business and referential rules) and quarantines rows that fail with the exact rule and source row.",
+      "business_value": "Bad data is stopped and explained before it reaches a report.",
+      "use_case": "A claims file with 11 defective rows: 11 quarantined with rule ids, reject rate above 5% makes the batch untrusted.",
+      "scenarios": [
+        "D",
+        "C",
+        "F"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/d-bad-data.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/c-duplicate-delivery.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/f-interrupted-processing.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/contracts.md",
+        "docs/architecture.md"
+      ],
+      "demo": {
+        "view": "exceptions",
+        "label": "Open Exceptions"
+      },
+      "limitations": [
+        "Quarantined rows are never re-admitted; corrected data must be resubmitted.",
+        "Failed batches need an operator to replay them."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "transform-rules",
+      "name": "Transformation and business rules",
+      "status": "Implemented and verified",
+      "actors": [
+        "data-engineer",
+        "analyst"
+      ],
+      "description": "Transformations are declarative, whitelisted operations compiled from the contract; the same input, contract and engine version always give the same record hash. Contract changes are versioned, classified and approved.",
+      "business_value": "Business logic is executable, reviewable and replayable instead of buried in scripts.",
+      "use_case": "Publish a contract that widens a decimal: applied as new versions. A breaking change waits for an approver.",
+      "scenarios": [
+        "B",
+        "H"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/b-tenant-customization.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/h-contract-evolution.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/unit/transforms.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/unit/contracts.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/contracts.md",
+        "docs/adr/0005-declarative-transforms-only.md"
+      ],
+      "demo": {
+        "view": "contracts",
+        "label": "Open Contracts"
+      },
+      "limitations": [
+        "No tenant code: only whitelisted operations are available by design.",
+        "There is no in-app contract editor; publishing is an API operation."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "reporting-reconciliation",
+      "name": "Trusted reporting and reconciliation",
+      "status": "Implemented and verified",
+      "actors": [
+        "analyst",
+        "leader",
+        "architect"
+      ],
+      "description": "Reports use the latest trusted version of each record. Batch and dataset reconciliation checks decide trust; failing checks qualify the figures that depend on them. Metrics are compared with independent SQL and generator ground truth in tests.",
+      "business_value": "A figure you can defend, and a clear signal when you cannot.",
+      "use_case": "In-transit loss is detected and explained, the affected metric is qualified, and trust is restored only after a complete resend.",
+      "scenarios": [
+        "A",
+        "I",
+        "J"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/a-normal-ingestion.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/i-reconciliation-failure.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/j-reporting-correctness.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/metrics.md",
+        "docs/architecture.md"
+      ],
+      "demo": {
+        "view": "",
+        "label": "Open the Overview"
+      },
+      "limitations": [
+        "Agreement between independent calculations shows the platform is self-consistent against the generator; it does not prove the source data was right.",
+        "Freshness, latency percentiles and the daily series are not independently checked."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "governed-sql",
+      "name": "Governed natural-language SQL",
+      "status": "Implemented and verified",
+      "actors": [
+        "analyst",
+        "architect"
+      ],
+      "description": "A question becomes an untrusted SQL proposal (deterministic rules or Claude). A structural validator and a read-only database role decide what can run. Execution is a separate explicit step.",
+      "business_value": "Self-service analysis without trusting a model with the database.",
+      "use_case": "Ask for daily paid amounts; inspect the validated SQL and its redactions; run it and compare with independent SQL.",
+      "scenarios": [
+        "K",
+        "L",
+        "M",
+        "N",
+        "O"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/k-natural-language-sql.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/l-role-restricted-field.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/n-tenant-isolation-inference.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/unit/query-validate.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/query-workspace.md",
+        "docs/adr/0011-governed-natural-language-sql.md"
+      ],
+      "demo": {
+        "view": "query",
+        "label": "Open the query workspace"
+      },
+      "limitations": [
+        "The live Claude provider path is unverified: the supplied key needed a workspace id that was not available when results were recorded.",
+        "Small-cell suppression of aggregates is not implemented."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "saved-queries",
+      "name": "Reusable queries",
+      "status": "Implemented and verified",
+      "actors": [
+        "analyst"
+      ],
+      "description": "Saved queries are versioned (append-only), take typed parameters that are bound safely, and keep the exact version each run used. Saving grants nothing: SQL is re-validated for the run role every time.",
+      "business_value": "Stop recreating the same query, and know which version produced a number.",
+      "use_case": "Save a validated proposal, run it with a parameter, add a version and compare.",
+      "scenarios": [
+        "P",
+        "T"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/p-saved-queries.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/t-analytics-end-to-end.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/saved-analytics.md",
+        "docs/adr/0014-saved-analytics-authority.md"
+      ],
+      "demo": {
+        "view": "saved",
+        "label": "Open saved queries"
+      },
+      "limitations": [
+        "Schedules run as the creating person's delegated identity; service identities are not built (ADR 0014)."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "ml-analysis",
+      "name": "ML-style analysis (statistical baselines)",
+      "status": "Implemented and verified",
+      "actors": [
+        "analyst",
+        "ml-engineer",
+        "leader"
+      ],
+      "description": "Anomaly detection (rolling MAD, seasonal decomposition), forecasting (naive, seasonal naive, drift, Holt, auto selection by rolling-origin backtest with empirical intervals), robust outlier scores and seeded k-means. Every result carries method, version, quality measures and limitations.",
+      "business_value": "Findings you can audit: the same data always gives the same answer, and each result says what it cannot show.",
+      "use_case": "A planted spike is ranked first by both anomaly algorithms; a forecast is scored on held-out weeks.",
+      "scenarios": [
+        "S",
+        "T"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/s-ml-analyses.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/unit/analysis.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/saved-analytics.md",
+        "docs/adr/0016-deterministic-analysis.md"
+      ],
+      "demo": {
+        "view": "runs",
+        "label": "Open run history"
+      },
+      "limitations": [
+        "These are statistical baselines, not learned models: no holiday calendars, no multivariate forecasting, clusters need human naming.",
+        "Analyses run in the worker with input caps, not in a sandbox.",
+        "Optional model-written summaries are tested with a stub provider only."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "scheduling-delivery",
+      "name": "Scheduling and delivery",
+      "status": "Implemented and verified",
+      "actors": [
+        "ops",
+        "analyst",
+        "architect"
+      ],
+      "description": "Durable schedules (time zone, DST rules) run in the worker without any client, exactly once per occurrence even with racing schedulers, recover from restarts, retry deliveries with backoff and record every attempt.",
+      "business_value": "Analyses become repeatable workflows whose failures are visible.",
+      "use_case": "Stop the worker, queue a run: it stays queued, then succeeds seconds after restart. A revoked identity is denied before any query runs.",
+      "scenarios": [
+        "Q",
+        "R",
+        "T"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/q-scheduling.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/r-delivery.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/t-analytics-end-to-end.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/saved-analytics.md",
+        "docs/adr/0015-durable-scheduler.md"
+      ],
+      "demo": {
+        "view": "destinations",
+        "label": "Open delivery destinations"
+      },
+      "limitations": [
+        "Email was tested against a local SMTP receiver and webhooks against a loopback receiver; no real relay or remote endpoint.",
+        "Alerting rules and dashboards are not shipped."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "security-governance",
+      "name": "Security and governance",
+      "status": "Implemented and verified",
+      "actors": [
+        "architect",
+        "leader",
+        "data-engineer"
+      ],
+      "description": "Route authorization, request-bound tenant scope and RLS, a single field-policy resolver for every surface, per-role database roles, re-authorization before delivery and an append-only audit trail.",
+      "business_value": "A result that was allowed once is not assumed safe forever.",
+      "use_case": "A steward marks a field sensitive: every surface redacts it at once; a delivery of a now-restricted result is blocked.",
+      "scenarios": [
+        "G",
+        "L",
+        "M",
+        "N",
+        "R"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/scenarios/g-privacy-violation.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/m-sensitivity-redaction.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/scenarios/n-tenant-isolation-inference.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/integration/api.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/threat-model.md",
+        "docs/adr/0008-defence-in-depth-isolation.md",
+        "docs/adr/0012-field-policy-model.md"
+      ],
+      "demo": {
+        "view": "fields",
+        "label": "Open field policies"
+      },
+      "limitations": [
+        "No SSO, MFA, rate limiting on the API, or field encryption.",
+        "No compliance certification is claimed, including HIPAA. All data is synthetic.",
+        "RLS on canonical tenant tables is a documented gap; isolation there rests on the other layers."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "web-client",
+      "name": "Web client",
+      "status": "Implemented; verification incomplete",
+      "actors": [
+        "analyst",
+        "leader",
+        "data-engineer"
+      ],
+      "description": "A React single-page app over the same API with the same views and permissions as the native client, served by the API from the same origin under a strict content security policy.",
+      "business_value": "A parallel interface that needs no installation.",
+      "use_case": "Open it, sign in with a demo token, run a saved query and read its charts.",
+      "scenarios": [],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/unit/web-hosting.test.ts"
+        }
+      ],
+      "docs": [
+        "web/README.md",
+        "docs/adr/0017-web-interface.md"
+      ],
+      "demo": {
+        "view": "",
+        "label": "Open the demo"
+      },
+      "limitations": [
+        "Verified by a headless-browser smoke run and a server hosting unit test; the recorded scenario suite does not drive it."
+      ],
+      "verification": {
+        "doc": "docs/production-readiness.md",
+        "note": "See the limitations listed for this capability."
+      }
+    },
+    {
+      "id": "native-client",
+      "name": "Native desktop client",
+      "status": "Implemented and verified",
+      "actors": [
+        "analyst",
+        "ops"
+      ],
+      "description": "A Rust/GPUI client with every view; calls never block the UI thread and large results are virtualized.",
+      "business_value": "A fast client that renders the API and computes nothing itself.",
+      "use_case": "Scenarios J, O and U run in a real window.",
+      "scenarios": [
+        "J",
+        "O",
+        "U"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/e2e/native.test.ts"
+        }
+      ],
+      "docs": [
+        "native/README.md",
+        "docs/adr/0013-native-client.md"
+      ],
+      "demo": {
+        "view": "",
+        "label": "Open the demo"
+      },
+      "limitations": [
+        "Verified on Linux (X11) with software rendering only; macOS and Windows builds are unverified."
+      ],
+      "verification": {
+        "doc": "docs/test-results.md",
+        "commit": "dc06c95",
+        "note": "Recorded from one clean clone at this commit. Not re-run for this page."
+      }
+    },
+    {
+      "id": "grounded-assistant",
+      "name": "Grounded assistant: architecture and design questions",
+      "status": "Partially implemented",
+      "actors": [
+        "leader",
+        "architect",
+        "data-engineer",
+        "ml-engineer"
+      ],
+      "description": "Answers questions about the design, decisions, capabilities and evidence using vector retrieval over an approved corpus, with citations. Says so when evidence is weak.",
+      "business_value": "Lets a visitor interrogate the design instead of reading it linearly.",
+      "use_case": "Ask why PostgreSQL is the queue; the answer cites the ADR and the scale-out triggers.",
+      "scenarios": [],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/unit/assistant.test.ts"
+        }
+      ],
+      "docs": [
+        "docs/adr/0018-grounded-assistant.md"
+      ],
+      "demo": {
+        "view": "",
+        "label": "Ask Clearline"
+      },
+      "limitations": [
+        "Retrieval quality is measured on a small evaluation set; see the recorded results, not a claimed accuracy.",
+        "Model-written answers need a configured provider; otherwise answers are extractive and labelled."
+      ],
+      "verification": {
+        "doc": "docs/production-readiness.md",
+        "note": "See the limitations listed for this capability."
+      }
+    },
+    {
+      "id": "assistant-data-tools",
+      "name": "Assistant data tools (questions about current values)",
+      "status": "Planned",
+      "actors": [
+        "analyst",
+        "leader"
+      ],
+      "description": "Planned: narrow, authorized, templated operations so the assistant can answer questions about demo data from actual computation, with query evidence.",
+      "business_value": "Numbers in answers must come from computation, not from retrieved text.",
+      "use_case": "Ask for the paid amount last month and receive the value, window, definition and a query reference.",
+      "scenarios": [],
+      "evidence": [],
+      "docs": [
+        "docs/adr/0018-grounded-assistant.md"
+      ],
+      "demo": {
+        "view": "query",
+        "label": "Use the query workspace today"
+      },
+      "limitations": [
+        "Not implemented. Today the assistant declines to state current values and points to the query workspace."
+      ],
+      "verification": {
+        "doc": "docs/production-readiness.md",
+        "note": "See the limitations listed for this capability."
+      }
+    }
+  ]
+}

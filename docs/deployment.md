@@ -22,6 +22,13 @@ All settings are environment variables, validated at startup (`src/platform/conf
 | `DATABASE_URL` | `postgres://clearline:clearline@localhost:5432/clearline` | **Secret.** Connection string |
 | `NODE_ENV` | `development` | `production` disables fault injection and blocks the demo seed |
 | `PORT`, `HOST` | `8080`, `0.0.0.0` | API listener |
+| `WEB_DIR` | `web/dist` (`/app/web` in the image) | Built web client served by the API; absent means the API serves JSON only |
+| `CONTENT_DIR`, `REPO_ROOT` | `./content`, `.` | Content model and the documents the assistant may index (`/app/content`, `/app/docs` in the image) |
+| `EMBEDDING_PROVIDER` | `local` | `local` (small open model run in-process) or `hash` (lexical, for tests). The index records which; changing it needs `assistant:index -- --rebuild` |
+| `EMBEDDING_CACHE_DIR`, `EMBEDDING_ALLOW_DOWNLOAD` | `/app/.models`, `false` in the image | Where the embedding model lives; the image ships it so no network is needed at run time |
+| `ASSISTANT_PROVIDER`, `ASSISTANT_MODEL` | model if `ANTHROPIC_API_KEY` is set, else extractive; `claude-sonnet-5-5` | Without a key answers are labelled excerpts, never presented as model output. `ANTHROPIC_WORKSPACE_ID` applies as for the query provider |
+| `ASSISTANT_RETRIEVAL_K`, `ASSISTANT_CONTEXT_CHARS`, `ASSISTANT_MIN_SCORE` | `6`, `7000`, `0.3` | Retrieval depth, context budget, minimum similarity to answer |
+| `ASSISTANT_RATE_PER_MIN`, `ASSISTANT_RATE_PER_MIN_AUTH`, `ASSISTANT_RATE_GLOBAL_PER_MIN` | `12`, `40`, `300` | Per-client, per-token and global limits (in memory, per process) |
 | `LOG_LEVEL` | `info` (`warn` in test) | `debug` \| `info` \| `warn` \| `error` |
 | `DB_POOL_SIZE` | `10` | Connections per process |
 | `STATEMENT_TIMEOUT_MS` | `60000` | Per-statement database timeout |

@@ -11,6 +11,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "migrate": "tsx src/cli.ts migrate",
+    "assistant:index": "tsx src/cli.ts assistant-index",
+    "assistant:eval": "tsx scripts/assistant-eval.ts",
     "seed": "tsx scripts/seed.ts",
     "dev:api": "tsx src/main.ts",
     "dev:worker": "tsx src/worker-main.ts",
@@ -36,6 +38,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.135.0",
+    "@huggingface/transformers": "^4.3.1",
     "ajv": "^8.20.0",
     "ajv-formats": "^3.0.1",
     "csv-parse": "^7.0.3",

@@ -35,6 +35,7 @@ import { PLATFORM_METRIC_DEFINITIONS } from '../reporting/definitions.js';
 import { auditTx, audit } from '../control/audit.js';
 import { CONTRACT_SCHEMA } from '../contracts/validate.js';
 import { loadConfig } from '../platform/config.js';
+import { assistantHandlers } from '../assistant/routes.js';
 
 export interface RouteDef {
   method: 'GET' | 'POST';
@@ -56,6 +57,12 @@ const bool = (v: string | undefined) => v === 'true' || v === '1';
 const R: RouteDef[] = [];
 const route = (method: RouteDef['method'], url: string, perm: RouteDef['perm'], summary: string, handler: RouteDef['handler']) =>
   R.push({ method, url, perm, summary, tenantScoped: url.includes(':tenant'), handler });
+
+// ---- public: architecture content and the grounded assistant (no account needed; see src/assistant/routes.ts)
+route('GET', '/api/public/content', null, 'The architecture content model: components, diagram, capabilities with evidence-based status, decisions, actors and limitations.', async () => assistantHandlers.content());
+route('GET', '/api/public/assistant/status', null, 'Assistant status: retrieval index (embedder, model, corpus version), answer mode (model or extractive) and limits.', async () => assistantHandlers.status());
+route('GET', '/api/public/source', null, 'An approved source document for a citation. Query: path. Documents classified for signed-in users need an Authorization header.', async (r) => assistantHandlers.source(r));
+route('POST', '/api/public/assistant/ask', null, 'Ask the grounded assistant. Body: {message, history?, context?}. Retrieval over approved documents; an Authorization header widens it to documents for signed-in users. Rate limited.', async (r, rep) => assistantHandlers.ask(r, rep));
 
 // ---- identity & platform administration
 route('GET', '/api/v1/me', 'authenticated', 'Describe the calling principal (tenant, role, permissions).', async (_r, _rep, p) => ({ actor: p.actor, tenant_id: p.tenantId, role: p.role, permissions: [...ROLE_PERMISSIONS[p.role]].sort() }));

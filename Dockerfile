@@ -31,10 +31,19 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=secret,id=extra_ca,required=false sh -c 'if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; npm ci --omit=dev --no-audit --no-fund && npm cache clean --force'
 COPY --from=build /app/dist ./dist
+COPY content ./content
+COPY docs ./docs
+COPY README.md ./README.md
 COPY --from=web /web/dist ./web
 ENV WEB_DIR=/app/web
 COPY db ./db
 COPY contracts ./contracts
+# The assistant's local embedding model is fetched once at build time so the running stack needs no network for it.
+ENV EMBEDDING_CACHE_DIR=/app/.models
+RUN --mount=type=secret,id=extra_ca,required=false sh -c 'if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi; node -e "import(\"@huggingface/transformers\").then(async ({pipeline, env}) => { env.cacheDir = process.env.EMBEDDING_CACHE_DIR; await pipeline(\"feature-extraction\", \"Xenova/all-MiniLM-L6-v2\", {dtype: \"fp32\"}); })" \
+ && rm -rf node_modules/onnxruntime-node/bin/napi-v*/win32 node_modules/onnxruntime-node/bin/napi-v*/darwin' \
+ && chown -R node:node /app/.models
+ENV EMBEDDING_ALLOW_DOWNLOAD=false
 USER node
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --retries=6 \

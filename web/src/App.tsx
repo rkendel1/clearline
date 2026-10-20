@@ -24,6 +24,10 @@ import { Destinations } from './views/Destinations';
 import { Notifications } from './views/Notifications';
 import type { Notifications as NotificationList } from './types';
 import { Note } from './ui';
+import { Landing } from './landing/Landing';
+import { Source } from './landing/Source';
+import { Assistant } from './landing/Assistant';
+import { useRoute as useHashRoute } from './lib/router';
 
 interface Item { key: string; label: string; perm: string; render: () => ReactNode; badge?: number }
 
@@ -32,8 +36,20 @@ export function App() {
   const [expired, setExpired] = useState(false);
   const signOut = useCallback(() => { session.signOut(); setMe(null); window.location.hash = ''; }, []);
   useEffect(() => { session.onUnauthorized(() => { session.signOut(); setMe(null); setExpired(true); }); return () => session.onUnauthorized(null); }, []);
-  if (!me) return <SignIn expired={expired} onSignedIn={(m) => { setExpired(false); setMe(m); }} />;
+  if (!me) return <Public expired={expired} onSignedIn={(m) => { setExpired(false); setMe(m); window.location.hash = '#/'; }} />;
   return <Shell me={me} onSignOut={signOut} />;
+}
+
+/** Before sign-in: the public architecture walkthrough and assistant. Nothing here needs an account. */
+function Public({ expired, onSignedIn }: { expired: boolean; onSignedIn: (m: Me) => void }) {
+  const r = useHashRoute();
+  const page = r.path[0];
+  return (
+    <>
+      {page === 'signin' || expired ? <SignIn expired={expired} onSignedIn={onSignedIn} /> : page === 'source' ? <Source /> : <Landing />}
+      <Assistant />
+    </>
+  );
 }
 
 function Shell({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
@@ -81,6 +97,7 @@ function Shell({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
       <nav className={`nav${open ? '' : ' closed'}`} aria-label="Main">
         <div className="row"><div className="brand grow">Clearline</div><button className="btn menu-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>Menu</button></div>
         <div className="groups" onClick={() => setOpen(false)}>
+          <a href={href('about')} className={route.path[0] === 'about' ? 'active' : ''}>Architecture</a>
           {platform && <a href={href('platform')} className={route.path[0] === 'platform' ? 'active' : ''}>Platform</a>}
           {visible.map((g) => (
             <div key={g.title}>
@@ -96,12 +113,14 @@ function Shell({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
         </div>
       </nav>
       <main className="main" id="main">
-        {platform && route.path[0] === 'platform' ? <Platform /> :
+        {route.path[0] === 'about' ? <Landing embedded /> : route.path[0] === 'source' ? <Source /> :
+          platform && route.path[0] === 'platform' ? <Platform /> :
           current ? current.render() :
           route.path[0] && route.path[0] !== '' ? <Note tone="warn">There is nothing at <code>#{route.path.join('/')}</code>, or your role cannot see it.</Note> :
           fallback ? fallback.render() :
           platform ? <Platform /> : <Note tone="warn">This token has no permissions to view data in the web interface.</Note>}
       </main>
+      <Assistant view={route.path[0] ?? ''} />
     </div>
   );
 }

@@ -1,0 +1,648 @@
+[
+  {
+    "id": "users",
+    "name": "People and source systems",
+    "layer": "actors",
+    "status": "implemented",
+    "layout": {
+      "x": 20,
+      "y": 12,
+      "w": 960,
+      "h": 56
+    },
+    "summary": "Analysts, operators, approvers and data leaders; source systems that submit files and feeds.",
+    "responsibility": "Humans use a client to read reports and run analyses; source systems push CSV or JSON batches over HTTPS with an API token.",
+    "inputs": [
+      "Questions, queries, approvals",
+      "CSV and JSON batches"
+    ],
+    "outputs": [
+      "Reports, insights, notifications"
+    ],
+    "dependencies": [
+      "clients",
+      "api"
+    ],
+    "data": "None. Identity is a token held by the caller.",
+    "security": "Every caller authenticates with a bearer token; the server decides what it may do.",
+    "failure_modes": [
+      "Revoked or expired token: 401, signed out"
+    ],
+    "why": "Clearline is explained from the viewpoint of its users, so the diagram starts with them.",
+    "decisions": [],
+    "refs": [
+      {
+        "label": "Actors",
+        "path": "content/actors.json"
+      }
+    ]
+  },
+  {
+    "id": "clients",
+    "name": "Clients: native and web",
+    "layer": "client",
+    "status": "implemented",
+    "layout": {
+      "x": 20,
+      "y": 92,
+      "w": 470,
+      "h": 64
+    },
+    "summary": "Rust/GPUI desktop client and a React web client. Both render API responses only.",
+    "responsibility": "Present the same views over the same API. Neither computes business results; each hides actions the token cannot perform, and the server enforces them anyway.",
+    "inputs": [
+      "API JSON",
+      "User input"
+    ],
+    "outputs": [
+      "HTTP requests with a bearer token"
+    ],
+    "dependencies": [
+      "api"
+    ],
+    "data": "Nothing persistent. The token is held in memory only.",
+    "security": "Not a security boundary: a modified client gains nothing the server would not grant. The web app is served with a strict content security policy.",
+    "failure_modes": [
+      "API unreachable: views show an error and the correlation id"
+    ],
+    "why": "Keeping clients thin means a second client (the web app) was added without touching business logic.",
+    "decisions": [
+      "D-clients"
+    ],
+    "refs": [
+      {
+        "label": "Native client",
+        "path": "native/README.md"
+      },
+      {
+        "label": "Web app",
+        "path": "web/README.md"
+      },
+      {
+        "label": "ADR 0013",
+        "path": "docs/adr/0013-native-client.md"
+      }
+    ]
+  },
+  {
+    "id": "assistant",
+    "name": "Ask Clearline assistant",
+    "layer": "assistant",
+    "status": "partial",
+    "layout": {
+      "x": 520,
+      "y": 92,
+      "w": 460,
+      "h": 64
+    },
+    "summary": "Answers questions about the design, capabilities and evidence, with citations. Structured data tools are planned.",
+    "responsibility": "Routes a question to retrieval over the approved corpus, builds a grounded answer (model-written if a provider is configured, extractive otherwise) and returns citations and navigation actions. It never executes SQL.",
+    "inputs": [
+      "Question, recent turns, page context"
+    ],
+    "outputs": [
+      "Answer, citations, navigation actions"
+    ],
+    "dependencies": [
+      "retrieval",
+      "provider"
+    ],
+    "data": "No conversation is stored on the server. Rate-limit counters are in memory.",
+    "security": "Public callers retrieve only public chunks. Retrieved text is untrusted data and cannot grant access. Output is rendered as text, links come from a fixed destination table.",
+    "failure_modes": [
+      "No retrieval index: the assistant says so rather than guessing",
+      "No model configured: extractive answer, labelled as such",
+      "Weak evidence: it declines"
+    ],
+    "why": "A walkthrough that can be questioned must be grounded, otherwise it is a generic chatbot.",
+    "decisions": [
+      "D-retrieval"
+    ],
+    "refs": [
+      {
+        "label": "Assistant",
+        "path": "src/assistant"
+      },
+      {
+        "label": "ADR 0018",
+        "path": "docs/adr/0018-grounded-assistant.md"
+      }
+    ]
+  },
+  {
+    "id": "api",
+    "name": "Application API",
+    "layer": "api",
+    "status": "implemented",
+    "layout": {
+      "x": 20,
+      "y": 184,
+      "w": 470,
+      "h": 84
+    },
+    "summary": "Authentication, authorization, tenant scope, validation, correlation ids and access audit. No business logic.",
+    "responsibility": "The single entry point for every client and source. Authenticates the token, authorizes the route against the tenant in the path, binds the tenant for the whole request, maps errors and audits.",
+    "inputs": [
+      "HTTP requests"
+    ],
+    "outputs": [
+      "JSON, CSV, audit events"
+    ],
+    "dependencies": [
+      "postgres",
+      "pipeline",
+      "query",
+      "analytics"
+    ],
+    "data": "Reads tokens and writes audit events; owns no domain data.",
+    "security": "First enforcement point: role permission per route and a tenant check on :tenant. A mismatch is 403 and audited. The request-bound tenant scope then makes the data layer refuse any other tenant.",
+    "failure_modes": [
+      "Database unavailable: /readyz fails, requests 503",
+      "Scope violation: blocked at the data layer and logged loudly"
+    ],
+    "why": "Putting authorization in one thin layer means a route cannot forget it, and defence in depth catches the day it does.",
+    "decisions": [
+      "D-security",
+      "D-monolith"
+    ],
+    "refs": [
+      {
+        "label": "Routes",
+        "path": "src/api/routes.ts"
+      },
+      {
+        "label": "Server",
+        "path": "src/api/server.ts"
+      },
+      {
+        "label": "Auth",
+        "path": "src/control/auth.ts"
+      }
+    ]
+  },
+  {
+    "id": "retrieval",
+    "name": "Vector retrieval",
+    "layer": "assistant",
+    "status": "implemented",
+    "layout": {
+      "x": 520,
+      "y": 184,
+      "w": 230,
+      "h": 84
+    },
+    "summary": "pgvector index of approved documents, embedded by a local model.",
+    "responsibility": "Finds the chunks of approved documentation, decision records and capability definitions most relevant to a question. It finds context; it does not decide facts.",
+    "inputs": [
+      "Question text"
+    ],
+    "outputs": [
+      "Ranked chunks with source and score"
+    ],
+    "dependencies": [
+      "postgres"
+    ],
+    "data": "Chunks of public content only, with source, heading, content hash and access class. No tenant data, no secrets.",
+    "security": "Access class is applied in the SQL query before any text reaches the answer step. The corpus is an allow-list, not a directory crawl.",
+    "failure_modes": [
+      "Extension or index missing: retrieval is reported unavailable",
+      "Embedding model changed: refuses to mix, requires a rebuild"
+    ],
+    "why": "Semantic search finds the right explanation when the visitor does not know the vocabulary.",
+    "decisions": [
+      "D-retrieval"
+    ],
+    "refs": [
+      {
+        "label": "Indexer",
+        "path": "src/assistant"
+      },
+      {
+        "label": "ADR 0018",
+        "path": "docs/adr/0018-grounded-assistant.md"
+      }
+    ]
+  },
+  {
+    "id": "provider",
+    "name": "Model provider (optional)",
+    "layer": "assistant",
+    "status": "implemented",
+    "layout": {
+      "x": 520,
+      "y": 276,
+      "w": 460,
+      "h": 52
+    },
+    "summary": "Claude, when configured. Used to phrase grounded answers and, separately, to propose SQL.",
+    "responsibility": "Phrases an answer from supplied evidence, or proposes SQL that is validated like any other untrusted input. Absent a key, the deterministic provider and the extractive answer are used.",
+    "inputs": [
+      "Evidence chunks, or catalog metadata"
+    ],
+    "outputs": [
+      "Draft answer or SQL proposal"
+    ],
+    "dependencies": [],
+    "data": "Nothing. No row values are sent for SQL proposals; assistant prompts contain only public content and the question.",
+    "security": "Treated as untrusted. Output is validated (SQL) or checked against the supplied citations (answers).",
+    "failure_modes": [
+      "Unavailable or rejected: 503 with a generic message; manual SQL and extractive answers keep working",
+      "Live path verification is incomplete: see the limitations"
+    ],
+    "why": "A model makes language fluent; it must not be the source of facts.",
+    "decisions": [
+      "D-analytics-sql",
+      "D-ml"
+    ],
+    "refs": [
+      {
+        "label": "Providers",
+        "path": "src/query/providers"
+      },
+      {
+        "label": "ADR 0011",
+        "path": "docs/adr/0011-governed-natural-language-sql.md"
+      }
+    ]
+  },
+  {
+    "id": "pipeline",
+    "name": "Data pipeline (worker)",
+    "layer": "pipeline",
+    "status": "implemented",
+    "layout": {
+      "x": 20,
+      "y": 360,
+      "w": 300,
+      "h": 100
+    },
+    "summary": "Claims a batch, transforms, validates, reconciles and decides trust in one transaction.",
+    "responsibility": "Takes queued batches (lease, SKIP LOCKED), applies the contract: declarative transforms, quality rules, keys, duplicates, corrections, late data, then reconciliation. Commits canonical rows, quarantine and evidence together or not at all.",
+    "inputs": [
+      "Queued batches",
+      "Data contract version"
+    ],
+    "outputs": [
+      "Canonical records, quarantine, quality and reconciliation results, trust status"
+    ],
+    "dependencies": [
+      "postgres"
+    ],
+    "data": "Writes core.batches state, canonical tenant tables, quarantine, quality and reconciliation results.",
+    "security": "Runs under the batch tenant scope. Sensitive values found in unexpected places are masked and scrubbed from raw payloads.",
+    "failure_modes": [
+      "Crash mid-transaction: nothing visible, recovered after lease expiry",
+      "Failing check: batch is untrusted, metrics qualified",
+      "Processing error: failed with no effects, replayable"
+    ],
+    "why": "Business rules are executable and versioned, so a transformation can be explained and replayed.",
+    "decisions": [
+      "D-postgres",
+      "D-monolith",
+      "D-sync"
+    ],
+    "refs": [
+      {
+        "label": "Processor",
+        "path": "src/ingestion/processor.ts"
+      },
+      {
+        "label": "Transforms",
+        "path": "src/transform"
+      },
+      {
+        "label": "Quality",
+        "path": "src/quality"
+      },
+      {
+        "label": "Reconciliation",
+        "path": "src/reconciliation"
+      }
+    ]
+  },
+  {
+    "id": "query",
+    "name": "Query workspace",
+    "layer": "query",
+    "status": "implemented",
+    "layout": {
+      "x": 340,
+      "y": 360,
+      "w": 300,
+      "h": 100
+    },
+    "summary": "Question or SQL becomes a validated proposal; execution is explicit and re-validated.",
+    "responsibility": "Builds the permitted catalog for the role, gets an untrusted proposal (rules or model), validates it structurally, estimates it, and only runs it when asked, on a read-only database role.",
+    "inputs": [
+      "Question or SQL",
+      "Role and tenant"
+    ],
+    "outputs": [
+      "Validated proposal, redacted result rows, history"
+    ],
+    "dependencies": [
+      "postgres",
+      "provider"
+    ],
+    "data": "Proposals and execution records. Result rows are never stored.",
+    "security": "Second and third enforcement points: the AST validator, then a separate login that can only SET ROLE to a per-tenant, per-role role with column grants, read-only, timeouts and row caps. The database refuses what the validator might miss.",
+    "failure_modes": [
+      "Provider down: 503, manual SQL still works",
+      "Policy changed since proposal: re-validated and refused",
+      "Timeout or cost limit: execution stopped"
+    ],
+    "why": "Exact numbers come from SQL, not from a model reading prose.",
+    "decisions": [
+      "D-analytics-sql",
+      "D-security"
+    ],
+    "refs": [
+      {
+        "label": "Query service",
+        "path": "src/query/service.ts"
+      },
+      {
+        "label": "Validator",
+        "path": "src/query/validate.ts"
+      },
+      {
+        "label": "ADR 0011",
+        "path": "docs/adr/0011-governed-natural-language-sql.md"
+      }
+    ]
+  },
+  {
+    "id": "analytics",
+    "name": "Analytics and scheduler",
+    "layer": "analytics",
+    "status": "implemented",
+    "layout": {
+      "x": 660,
+      "y": 360,
+      "w": 320,
+      "h": 100
+    },
+    "summary": "Saved queries, durable schedules, deterministic analyses, insights and deliveries.",
+    "responsibility": "Runs saved queries by schedule or on demand through the same query path, then anomaly, forecast, outlier and cluster analyses over the bounded result, then insights and deliveries. Executes in the worker, independent of any client.",
+    "inputs": [
+      "Saved query version, schedule occurrence",
+      "Run-as identity"
+    ],
+    "outputs": [
+      "Run record, analyses, insights, deliveries, notifications"
+    ],
+    "dependencies": [
+      "query",
+      "postgres",
+      "delivery"
+    ],
+    "data": "Saved queries and versions, schedules, runs, analyses, insights, deliveries (all in core).",
+    "security": "The schedule runs as a delegated identity and is re-checked at every run. Saving or scheduling grants nothing. Redacted or sensitive columns cannot enter an analysis.",
+    "failure_modes": [
+      "Identity revoked: denied before any query",
+      "Worker down: runs stay queued and run after restart",
+      "Stale schema: analysis flagged, run records stale_schema"
+    ],
+    "why": "Analyses are deterministic with stated limitations so an alert can be audited, not just believed.",
+    "decisions": [
+      "D-ml",
+      "D-sync",
+      "D-security"
+    ],
+    "refs": [
+      {
+        "label": "Scheduler",
+        "path": "src/analytics/scheduler.ts"
+      },
+      {
+        "label": "Analyses",
+        "path": "src/analysis"
+      },
+      {
+        "label": "ADR 0015",
+        "path": "docs/adr/0015-durable-scheduler.md"
+      },
+      {
+        "label": "ADR 0016",
+        "path": "docs/adr/0016-deterministic-analysis.md"
+      }
+    ]
+  },
+  {
+    "id": "postgres",
+    "name": "PostgreSQL",
+    "layer": "data",
+    "status": "implemented",
+    "layout": {
+      "x": 20,
+      "y": 490,
+      "w": 620,
+      "h": 100
+    },
+    "summary": "The one authoritative store: queue, contracts, canonical data, evidence, audit and saved analytics.",
+    "responsibility": "Holds everything that must be consistent with everything else, so cross-step invariants are ordinary transactions. Also hosts the vector index for the assistant (a retrieval index, never a source of business facts).",
+    "inputs": [
+      "Writes from the API and worker",
+      "Read-only queries on a separate login"
+    ],
+    "outputs": [
+      "Rows, views, evidence"
+    ],
+    "dependencies": [],
+    "data": "core (batches, raw rows, quarantine, quality, reconciliation, contracts, audit, saved analytics), t_<tenant> canonical tables, q_<tenant> query views, reporting views, assistant chunks.",
+    "security": "Fourth enforcement point: RLS on core tables, a request-bound tenant scope, per-tenant per-role query roles with column grants, append-only audit trigger.",
+    "failure_modes": [
+      "Unavailable: API not ready, worker leases expire and recover",
+      "Disk or WAL pressure from very large batches (see scale-out)"
+    ],
+    "why": "One database keeps queue state and batch state in the same row; the scale-out document lists what would justify more.",
+    "decisions": [
+      "D-postgres",
+      "D-monolith",
+      "D-retrieval"
+    ],
+    "refs": [
+      {
+        "label": "Migrations",
+        "path": "db/migrations"
+      },
+      {
+        "label": "ADR 0001",
+        "path": "docs/adr/0001-modular-monolith.md"
+      },
+      {
+        "label": "ADR 0002",
+        "path": "docs/adr/0002-postgres-as-queue.md"
+      },
+      {
+        "label": "Scale-out",
+        "path": "docs/scale-out.md"
+      }
+    ]
+  },
+  {
+    "id": "reporting",
+    "name": "Trusted reporting",
+    "layer": "reporting",
+    "status": "implemented",
+    "layout": {
+      "x": 660,
+      "y": 490,
+      "w": 320,
+      "h": 100
+    },
+    "summary": "Metrics, operations and exception reports, extracts and lineage over trusted data.",
+    "responsibility": "Computes declared business metrics from the latest trusted version of each record, qualifies figures when dataset checks fail, and traces any value back to its source row, batch, contract and transform versions.",
+    "inputs": [
+      "Canonical data, trust status, contract"
+    ],
+    "outputs": [
+      "Metrics, reports, CSV extracts, lineage"
+    ],
+    "dependencies": [
+      "postgres"
+    ],
+    "data": "Reads core and tenant tables; writes export log entries.",
+    "security": "The same field-policy resolver redacts every surface; sensitive fields cannot be filtered on.",
+    "failure_modes": [
+      "Failing dataset check: figure qualified, not hidden"
+    ],
+    "why": "A number is only useful if you can say what it counts and prove it agrees with an independent calculation.",
+    "decisions": [
+      "D-analytics-sql"
+    ],
+    "refs": [
+      {
+        "label": "Reports",
+        "path": "src/reporting"
+      },
+      {
+        "label": "Metric definitions",
+        "path": "docs/metrics.md"
+      }
+    ]
+  },
+  {
+    "id": "evidence",
+    "name": "Execution evidence",
+    "layer": "evidence",
+    "status": "implemented",
+    "layout": {
+      "x": 20,
+      "y": 620,
+      "w": 470,
+      "h": 84
+    },
+    "summary": "Batches, attempts, quality and reconciliation results, runs, deliveries and the audit trail.",
+    "responsibility": "Records what actually happened: attempts and outcomes, which rule rejected which row, which check failed, which run produced which analysis and delivery. Audit is append-only.",
+    "inputs": [
+      "Events from every component"
+    ],
+    "outputs": [
+      "Run and batch detail, audit trail, correlation ids"
+    ],
+    "dependencies": [
+      "postgres"
+    ],
+    "data": "core.batches, quality_results, reconciliation_results, analytics runs and deliveries, audit_events.",
+    "security": "Audit rows never contain values; subject keys are hashed. A trigger blocks updates and early deletes.",
+    "failure_modes": [
+      "Read audit is best-effort (documented gap)"
+    ],
+    "why": "If a failure cannot be diagnosed from recorded facts, it will be diagnosed from guesses.",
+    "decisions": [
+      "D-evidence"
+    ],
+    "refs": [
+      {
+        "label": "Audit",
+        "path": "src/control/audit.ts"
+      },
+      {
+        "label": "Threat model",
+        "path": "docs/threat-model.md"
+      }
+    ]
+  },
+  {
+    "id": "delivery",
+    "name": "Delivery layer",
+    "layer": "delivery",
+    "status": "implemented",
+    "layout": {
+      "x": 520,
+      "y": 620,
+      "w": 460,
+      "h": 84
+    },
+    "summary": "In-app notifications, SMTP email, signed webhooks and expiring CSV exports.",
+    "responsibility": "Sends results to configured destinations after re-authorizing the recipient and the data at send time, with retries and a recorded outcome per attempt. A failed delivery never reports the run as delivered.",
+    "inputs": [
+      "Run results and insights",
+      "Destination configuration"
+    ],
+    "outputs": [
+      "Notifications, email, webhook calls, exports"
+    ],
+    "dependencies": [
+      "analytics",
+      "postgres"
+    ],
+    "data": "Destinations, deliveries and attempts; secrets are references.",
+    "security": "Fifth enforcement point: re-authorization before every send; webhook targets pass an SSRF guard (every resolved address checked, pinned connection, no redirects).",
+    "failure_modes": [
+      "Provider down: retries with backoff, then failed and retryable by a person",
+      "Result became restricted after the query: delivery blocked, nothing sent"
+    ],
+    "why": "A result that was allowed when queried is not automatically safe to send later.",
+    "decisions": [
+      "D-security",
+      "D-sync"
+    ],
+    "refs": [
+      {
+        "label": "Delivery",
+        "path": "src/delivery"
+      },
+      {
+        "label": "Saved analytics",
+        "path": "docs/saved-analytics.md"
+      }
+    ]
+  },
+  {
+    "id": "datatools",
+    "name": "Validated data tools",
+    "layer": "assistant",
+    "status": "planned",
+    "layout": {
+      "x": 770,
+      "y": 184,
+      "w": 210,
+      "h": 84
+    },
+    "summary": "Planned: narrow, authorized, templated data operations for the assistant.",
+    "responsibility": "Planned Phase 4: approved aggregate operations over synthetic demo data for anonymous visitors, and the existing governed SQL path for signed-in users. Not implemented: the assistant cannot yet answer questions about current values.",
+    "inputs": [],
+    "outputs": [],
+    "dependencies": [
+      "query",
+      "reporting"
+    ],
+    "data": "None yet.",
+    "security": "Would run under a dedicated read-only public principal with rate limits.",
+    "failure_modes": [
+      "Not built"
+    ],
+    "why": "Questions about numbers must be answered by computation, never by retrieved prose.",
+    "decisions": [
+      "D-retrieval"
+    ],
+    "refs": [
+      {
+        "label": "ADR 0018",
+        "path": "docs/adr/0018-grounded-assistant.md"
+      }
+    ]
+  }
+]

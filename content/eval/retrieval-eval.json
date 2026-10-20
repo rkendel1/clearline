@@ -1,0 +1,324 @@
+{
+  "k": 6,
+  "questions": [
+    {
+      "id": "c1",
+      "kind": "component",
+      "question": "Where is authorization enforced in Clearline?",
+      "expect": [
+        "content/components/api",
+        "docs/adr/0008",
+        "docs/threat-model.md",
+        "docs/architecture.md",
+        "content/decisions/D-security"
+      ],
+      "note": ""
+    },
+    {
+      "id": "c2",
+      "kind": "component",
+      "question": "What does the worker do when it claims a batch?",
+      "expect": [
+        "content/components/pipeline",
+        "docs/adr/0002",
+        "docs/adr/0003",
+        "docs/architecture.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "c3",
+      "kind": "component",
+      "question": "How does the query workspace stop a model from running dangerous SQL?",
+      "expect": [
+        "content/components/query",
+        "docs/adr/0011",
+        "docs/query-workspace.md",
+        "content/capabilities/governed-sql"
+      ],
+      "note": ""
+    },
+    {
+      "id": "c4",
+      "kind": "component",
+      "question": "What happens to a delivery if the recipient lost access after the query ran?",
+      "expect": [
+        "content/components/delivery",
+        "docs/saved-analytics.md",
+        "content/decisions/D-security",
+        "docs/adr/0014"
+      ],
+      "note": ""
+    },
+    {
+      "id": "t1",
+      "kind": "tradeoff",
+      "question": "Why is PostgreSQL the work queue instead of a message broker?",
+      "expect": [
+        "docs/adr/0002",
+        "content/decisions/D-postgres",
+        "docs/scale-out.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "t2",
+      "kind": "tradeoff",
+      "question": "When would a data warehouse become justified?",
+      "expect": [
+        "docs/scale-out.md",
+        "content/decisions/D-postgres"
+      ],
+      "note": ""
+    },
+    {
+      "id": "t3",
+      "kind": "tradeoff",
+      "question": "Why use statistical baselines instead of a machine-learning model for anomalies?",
+      "expect": [
+        "docs/adr/0016",
+        "content/decisions/D-ml",
+        "content/capabilities/ml-analysis"
+      ],
+      "note": ""
+    },
+    {
+      "id": "t4",
+      "kind": "tradeoff",
+      "question": "Why separate vector retrieval from SQL for the assistant?",
+      "expect": [
+        "docs/adr/0018",
+        "content/decisions/D-retrieval"
+      ],
+      "note": ""
+    },
+    {
+      "id": "t5",
+      "kind": "tradeoff",
+      "question": "What are the costs of a modular monolith?",
+      "expect": [
+        "docs/adr/0001",
+        "content/decisions/D-monolith"
+      ],
+      "note": ""
+    },
+    {
+      "id": "s1",
+      "kind": "security",
+      "question": "How is tenant isolation enforced if the application has a bug?",
+      "expect": [
+        "docs/adr/0008",
+        "content/components/api",
+        "content/components/postgres",
+        "docs/threat-model.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "s2",
+      "kind": "security",
+      "question": "Why are permissions rechecked when a scheduled run executes?",
+      "expect": [
+        "docs/adr/0014",
+        "content/decisions/D-security",
+        "docs/saved-analytics.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "s3",
+      "kind": "security",
+      "question": "Is Clearline HIPAA compliant?",
+      "expect": [
+        "content/site/limitations",
+        "docs/threat-model.md",
+        "docs/production-readiness.md"
+      ],
+      "note": "must not be answered as compliant"
+    },
+    {
+      "id": "k1",
+      "kind": "capability",
+      "question": "Is scheduled delivery implemented and how was it verified?",
+      "expect": [
+        "content/capabilities/scheduling-delivery",
+        "docs/test-results.md",
+        "docs/production-readiness.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "k2",
+      "kind": "capability",
+      "question": "Which demonstration scenarios cover reconciliation failures?",
+      "expect": [
+        "content/site/scenarios",
+        "docs/test-results.md",
+        "content/capabilities/reporting-reconciliation"
+      ],
+      "note": ""
+    },
+    {
+      "id": "k3",
+      "kind": "capability",
+      "question": "Can the assistant answer questions about current claim totals?",
+      "expect": [
+        "content/capabilities/assistant-data-tools",
+        "docs/adr/0018",
+        "content/capabilities/grounded-assistant"
+      ],
+      "note": "status must be planned"
+    },
+    {
+      "id": "m1",
+      "kind": "multi-document",
+      "question": "How does Clearline decide that a batch can be trusted?",
+      "expect": [
+        "docs/adr/0006",
+        "docs/architecture.md",
+        "content/capabilities/reporting-reconciliation",
+        "docs/test-results.md"
+      ],
+      "note": "architecture + ADR + scenarios"
+    },
+    {
+      "id": "m2",
+      "kind": "multi-document",
+      "question": "What happens if a worker crashes in the middle of processing a batch?",
+      "expect": [
+        "docs/adr/0003",
+        "docs/adr/0002",
+        "docs/architecture.md",
+        "docs/test-results.md",
+        "content/components/pipeline"
+      ],
+      "note": ""
+    },
+    {
+      "id": "x1",
+      "kind": "conflicting-or-obsolete",
+      "question": "Does the API serve any browser content?",
+      "expect": [
+        "docs/adr/0017",
+        "content/capabilities/web-client",
+        "docs/adr/0013"
+      ],
+      "note": "older docs say JSON only; ADR 0017 supersedes that"
+    },
+    {
+      "id": "x2",
+      "kind": "conflicting-or-obsolete",
+      "question": "Is the web client covered by the recorded scenario suite?",
+      "expect": [
+        "content/capabilities/web-client",
+        "docs/adr/0017"
+      ],
+      "note": "must report verification incomplete"
+    },
+    {
+      "id": "n1",
+      "kind": "no-answer",
+      "question": "What is the best pizza topping?",
+      "expect": [],
+      "note": "declined"
+    },
+    {
+      "id": "n2",
+      "kind": "no-answer",
+      "question": "How do I train a neural network in PyTorch?",
+      "expect": [],
+      "note": "declined"
+    },
+    {
+      "id": "n3",
+      "kind": "no-answer",
+      "question": "What is the stock price of Anthropic?",
+      "expect": [],
+      "note": "declined"
+    },
+    {
+      "id": "p1",
+      "kind": "paraphrase",
+      "question": "What stops two workers from grabbing the same job?",
+      "expect": [
+        "docs/adr/0002",
+        "content/components/pipeline",
+        "docs/architecture.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "p2",
+      "kind": "paraphrase",
+      "question": "If the database server dies halfway through a run, do I end up with half-loaded data?",
+      "expect": [
+        "docs/adr/0003",
+        "docs/architecture.md",
+        "docs/test-results.md",
+        "content/components/pipeline"
+      ],
+      "note": ""
+    },
+    {
+      "id": "p3",
+      "kind": "paraphrase",
+      "question": "Who gets to sign off on a schema change that could break downstream consumers?",
+      "expect": [
+        "docs/adr/0010",
+        "content/capabilities/transform-rules",
+        "docs/contracts.md",
+        "docs/architecture.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "p4",
+      "kind": "paraphrase",
+      "question": "How do you keep a chatbot from making up numbers?",
+      "expect": [
+        "docs/adr/0018",
+        "content/decisions/D-retrieval",
+        "content/capabilities/assistant-data-tools",
+        "content/capabilities/grounded-assistant"
+      ],
+      "note": ""
+    },
+    {
+      "id": "p5",
+      "kind": "paraphrase",
+      "question": "Does any of this need an internet connection or paid AI to work?",
+      "expect": [
+        "docs/adr/0016",
+        "docs/adr/0018",
+        "docs/adr/0011",
+        "content/decisions/D-ml",
+        "content/capabilities/grounded-assistant",
+        "docs/query-workspace.md"
+      ],
+      "note": ""
+    },
+    {
+      "id": "p6",
+      "kind": "paraphrase",
+      "question": "Can I trust it when the system flags an unusual spike?",
+      "expect": [
+        "content/capabilities/ml-analysis",
+        "docs/adr/0016",
+        "docs/saved-analytics.md",
+        "content/decisions/D-ml"
+      ],
+      "note": ""
+    },
+    {
+      "id": "p7",
+      "kind": "paraphrase",
+      "question": "What would we have to build before turning this loose on real patient records?",
+      "expect": [
+        "content/site/limitations",
+        "docs/threat-model.md",
+        "docs/production-readiness.md"
+      ],
+      "note": ""
+    }
+  ]
+}

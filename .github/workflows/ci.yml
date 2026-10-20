@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]
@@ -38,6 +38,8 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Web client (typecheck and production build)
+        run: npm ci --prefix web && npm run build --prefix web
       - name: Dependency audit (production dependencies, high and above fail the build)
         run: |
           npm audit --omit=dev --audit-level=high
@@ -82,7 +84,7 @@ jobs:
     timeout-minutes: 45
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_PASSWORD: postgres
         ports: ["5432:5432"]

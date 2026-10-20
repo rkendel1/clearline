@@ -1,0 +1,457 @@
+{
+  "tags": [
+    [
+      "data-architecture",
+      "Data architecture"
+    ],
+    [
+      "analytics-ml",
+      "Analytics and ML"
+    ],
+    [
+      "security",
+      "Security"
+    ],
+    [
+      "reliability",
+      "Reliability"
+    ],
+    [
+      "cost-ops",
+      "Cost and operational complexity"
+    ],
+    [
+      "ai-retrieval",
+      "AI and retrieval"
+    ]
+  ],
+  "decisions": [
+    {
+      "id": "D-postgres",
+      "letter": "A",
+      "title": "Transactional database versus specialized analytical infrastructure",
+      "tags": [
+        "data-architecture",
+        "cost-ops"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "The platform must ingest, validate, reconcile and serve data with consistency between those steps, run on a laptop and be operable by a small team. Workloads measured so far are ingestion, SQL reporting and scheduled analyses over bounded results.",
+      "decision": "PostgreSQL is the queue, the canonical store, the evidence store, the reporting engine and the audit trail. Analytical queries run on a separate pool and login, read-only, with timeouts and row caps.",
+      "alternatives": [
+        "A warehouse or lakehouse for serving (BigQuery, Snowflake, Redshift, Delta/Iceberg)",
+        "A distributed processing engine (Spark, Flink, Beam)",
+        "A separate queue (SQS, RabbitMQ) plus a store"
+      ],
+      "advantages": [
+        "Cross-step invariants are ordinary transactions: reconciliation decides trust, quarantine and canonical writes agree.",
+        "One system to back up, secure and monitor.",
+        "Measured about 8,000 to 9,300 canonical rows per second per worker on a 2-vCPU VM, linear in batch size up to 100,000 rows."
+      ],
+      "costs": [
+        "Throughput is bounded by one primary; very large files mean long transactions.",
+        "Analytical reads compete with ingestion unless a replica is added.",
+        "Batches for one tenant entity are processed one at a time to keep corrections correct."
+      ],
+      "risks": [
+        "Long transactions and WAL bursts: batch size is capped (MAX_ROWS_PER_BATCH).",
+        "Hot entity serialization: documented as a real design change if it bites."
+      ],
+      "revisit_when": "Measured queue age grows while the database still has headroom, reporting queries over full history slow ingestion even with a replica, data outgrows one PostgreSQL, or processing becomes a multi-system DAG. docs/scale-out.md lists each trigger and what it buys and costs.",
+      "implementation_evidence": [
+        "benchmark.md ingestion results",
+        "Scenarios A, C, F (idempotency, crash recovery)",
+        "docs/scale-out.md"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0001",
+          "path": "docs/adr/0001-modular-monolith.md"
+        },
+        {
+          "label": "ADR 0002",
+          "path": "docs/adr/0002-postgres-as-queue.md"
+        },
+        {
+          "label": "ADR 0003",
+          "path": "docs/adr/0003-one-transaction-per-batch.md"
+        },
+        {
+          "label": "Scale-out",
+          "path": "docs/scale-out.md"
+        },
+        {
+          "label": "Benchmark",
+          "path": "docs/benchmark.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-monolith",
+      "letter": "B",
+      "title": "Modular application versus distributed services",
+      "tags": [
+        "data-architecture",
+        "reliability",
+        "cost-ops"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "Two process types are needed (request handling and background work) but every step shares one consistency domain.",
+      "decision": "One TypeScript codebase with enforced module boundaries, deployed as two process types (API and worker) from one image. Most boundaries are logical; the API/worker split is deployed independently and scales independently.",
+      "alternatives": [
+        "Separate services per capability (ingestion, quality, query, analytics, delivery)",
+        "A Python service for processing and ML"
+      ],
+      "advantages": [
+        "Small operational footprint: one image, one database.",
+        "Pure domain modules (transform, quality, analysis) have no I/O and are unit-testable.",
+        "The API is stateless, so adding instances is straightforward (not yet run behind a load balancer)."
+      ],
+      "costs": [
+        "Boundaries are a code-review discipline, not a network boundary; a careless import could couple modules (the dependency table in architecture.md is the reference).",
+        "Analyses share worker resources with ingestion and are not sandboxed."
+      ],
+      "risks": [
+        "Coupling creep: mitigated by the documented dependency direction."
+      ],
+      "revisit_when": "A component needs independent scaling, isolation or a different failure domain (for example an analysis sandbox), or a second team owns it. A modular monolith is not inherently more or less scalable than services; it trades coordination cost for operational simplicity.",
+      "implementation_evidence": [
+        "docs/architecture.md dependency table",
+        "Compose runs api and worker as separate containers from one image"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0001",
+          "path": "docs/adr/0001-modular-monolith.md"
+        },
+        {
+          "label": "ADR 0009",
+          "path": "docs/adr/0009-typescript-only.md"
+        },
+        {
+          "label": "Architecture",
+          "path": "docs/architecture.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-analytics-sql",
+      "letter": "C",
+      "title": "SQL-based analytics versus moving everything into ML infrastructure",
+      "tags": [
+        "analytics-ml",
+        "ai-retrieval"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "Reported figures must be exactly reproducible; some questions benefit from statistical inference. An LLM asked to compute a total from retrieved prose can be fluently wrong.",
+      "decision": "Exact aggregations and business metrics are computed by SQL under a single compiler for the \"trusted dataset\" rule. Statistics (anomaly, forecast, outlier, cluster) run on the bounded, authorized result of such a query. Models may propose SQL (validated like any untrusted input) or phrase an explanation of computed values.",
+      "alternatives": [
+        "Ask a model to answer analytical questions directly",
+        "Load everything into a feature store and ML platform"
+      ],
+      "advantages": [
+        "Reproducible and explainable: tests compare metrics with independent SQL and generator ground truth.",
+        "No credentials or network needed for the core path.",
+        "Costs stay low: a model is optional."
+      ],
+      "costs": [
+        "Less flexible than a model that reads anything.",
+        "Natural-language coverage by the built-in provider is a fixed set of intents."
+      ],
+      "risks": [
+        "Model-proposed SQL could be hostile or wrong: a structural validator plus database roles stand behind every run."
+      ],
+      "revisit_when": "A use case needs learned models beyond statistical baselines, or free-form questions must be answered at a quality only a model delivers, in which case it is added behind the same validation.",
+      "implementation_evidence": [
+        "Scenario J (14 metrics equal independent SQL)",
+        "Scenario K, N (validator and database boundary)"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0011",
+          "path": "docs/adr/0011-governed-natural-language-sql.md"
+        },
+        {
+          "label": "Metrics",
+          "path": "docs/metrics.md"
+        },
+        {
+          "label": "Query workspace",
+          "path": "docs/query-workspace.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-retrieval",
+      "letter": "D",
+      "title": "Vector retrieval versus structured data access",
+      "tags": [
+        "ai-retrieval",
+        "data-architecture"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "The assistant must explain the design (prose) and, later, report values (exact data). These need different mechanisms.",
+      "decision": "Vector retrieval over an approved, versioned corpus finds the relevant explanation; it is never the source of a current number. Facts such as totals, counts, run status and authorization come from the authoritative database through validated tools (planned) or the existing governed SQL path. The vector index lives in the same PostgreSQL (pgvector) with a local embedding model; no second database.",
+      "alternatives": [
+        "A dedicated vector database",
+        "Hosted embeddings",
+        "Full-text search only",
+        "Put the whole corpus in every prompt"
+      ],
+      "advantages": [
+        "No extra system to run; the index shares backups with everything else.",
+        "Local embeddings: nothing leaves the machine and no paid key is needed.",
+        "Access class is filtered in SQL before text reaches an answer."
+      ],
+      "costs": [
+        "A small local model has lower retrieval quality than a large hosted one.",
+        "pgvector image build adds a compile step to the database image.",
+        "Indexing is a separate step that must be run after content changes."
+      ],
+      "risks": [
+        "Prompt injection in retrieved text: it is treated as untrusted data, the assistant has no tools in this release, and output is rendered as text.",
+        "Stale index: content hashes are tracked and the status endpoint reports the indexed version."
+      ],
+      "revisit_when": "Retrieval recall on the evaluation set is too low, the corpus outgrows pgvector, or per-tenant private corpora are needed.",
+      "implementation_evidence": [
+        "Retrieval evaluation set (docs/assistant-evaluation.md)",
+        "test/unit/assistant.test.ts"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0018",
+          "path": "docs/adr/0018-grounded-assistant.md"
+        },
+        {
+          "label": "Assistant evaluation",
+          "path": "docs/assistant-evaluation.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-sync",
+      "letter": "E",
+      "title": "Synchronous versus scheduled execution",
+      "tags": [
+        "reliability",
+        "analytics-ml"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "Interactive questions want an answer now; repeatable analyses must run without a person and survive failure.",
+      "decision": "Interactive queries run synchronously with timeouts, cancellation, cost and concurrency limits. Scheduled work is a durable run in PostgreSQL claimed by the worker with leases, retried with exponential backoff, with bounded concurrency per process and tenant.",
+      "alternatives": [
+        "Cron on a laptop or an external scheduler",
+        "A workflow orchestrator (Airflow, Dagster, Temporal)"
+      ],
+      "advantages": [
+        "A schedule works with no client open: a run stayed queued while the worker was down and succeeded 2 s after restart.",
+        "Each occurrence runs exactly once even with racing schedulers; missed occurrences are coalesced.",
+        "Time zone and daylight-saving rules are explicit and tested."
+      ],
+      "costs": [
+        "Scheduler, queue and database share a failure domain.",
+        "Failed batches and deliveries need a person to retry beyond the attempt limit."
+      ],
+      "risks": [
+        "At-least-once delivery: effects are idempotent because an attempt commits completely or not at all."
+      ],
+      "revisit_when": "Processing becomes a multi-step DAG across systems with backfills and cross-step retries that a single worker transaction no longer covers.",
+      "implementation_evidence": [
+        "Scenario Q (scheduling), R (delivery), F (interruption)"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0015",
+          "path": "docs/adr/0015-durable-scheduler.md"
+        },
+        {
+          "label": "Saved analytics",
+          "path": "docs/saved-analytics.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-security",
+      "letter": "F",
+      "title": "Security at execution and delivery boundaries",
+      "tags": [
+        "security",
+        "reliability"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "A schedule can outlive the permissions of the person who created it, and field policies change after a query was approved.",
+      "decision": "Permissions are enforced on the server at every boundary and re-checked when work runs: route authorization, request-bound tenant scope, per-role database roles, the field-policy resolver on every surface, and re-authorization before each delivery. Saving or scheduling a query grants nothing.",
+      "alternatives": [
+        "Trust a previously authorized result",
+        "Enforce only in the client or only at save time"
+      ],
+      "advantages": [
+        "A revoked identity is denied before any query runs; a result that became restricted is not sent.",
+        "If one layer fails the next still refuses (validator bypassed: the database refuses)."
+      ],
+      "costs": [
+        "More checks per run; some denials are surprising to users.",
+        "Service identities for schedules are not built, so schedules depend on a person's delegated identity."
+      ],
+      "risks": [
+        "Documented gaps: no SSO/MFA, no API rate limiting, RLS on canonical tenant tables, small-cell suppression."
+      ],
+      "revisit_when": "Production use with real regulated data requires the gaps in docs/threat-model.md and docs/production-readiness.md to be closed first. No compliance claim is made.",
+      "implementation_evidence": [
+        "Scenarios G, L, M, N, R, T and the mutation checks"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0008",
+          "path": "docs/adr/0008-defence-in-depth-isolation.md"
+        },
+        {
+          "label": "ADR 0012",
+          "path": "docs/adr/0012-field-policy-model.md"
+        },
+        {
+          "label": "ADR 0014",
+          "path": "docs/adr/0014-saved-analytics-authority.md"
+        },
+        {
+          "label": "Threat model",
+          "path": "docs/threat-model.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-ml",
+      "letter": "G",
+      "title": "ML and model selection",
+      "tags": [
+        "analytics-ml",
+        "reliability"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "Alerts are acted on without a person checking each one. Simple, well-understood methods are hard to beat on short business series and make failures explicit.",
+      "decision": "Deterministic, offline statistical baselines with a status, method version, quality measures and limitations on every result. Model-written summaries are optional and must pass a grounding check against computed evidence.",
+      "alternatives": [
+        "Learned models (gradient boosting, deep sequence models)",
+        "Ask a model to find anomalies"
+      ],
+      "advantages": [
+        "Same input, same output; explainable and auditable.",
+        "Insufficient history or a stale schema is an explicit status rather than a confident guess.",
+        "No model to version, monitor or retrain."
+      ],
+      "costs": [
+        "No holiday calendars, no multivariate forecasting, no feature learning; clusters need human naming.",
+        "False positives are possible: findings are statistical deviations, not causes."
+      ],
+      "risks": [
+        "Algorithms run in the worker without sandboxing; input caps and a memory estimate bound them."
+      ],
+      "revisit_when": "A use case needs models beyond these baselines; they would be new versioned algorithms behind the same validation, statuses and evidence rules, with evaluation and monitoring added.",
+      "implementation_evidence": [
+        "Scenario S (planted anomaly ranked first; held-out forecast error recorded)",
+        "test/unit/analysis.test.ts"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0016",
+          "path": "docs/adr/0016-deterministic-analysis.md"
+        },
+        {
+          "label": "Benchmark",
+          "path": "docs/benchmark.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-evidence",
+      "letter": "H",
+      "title": "Evidence and observability",
+      "tags": [
+        "reliability",
+        "security"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "A failure that cannot be diagnosed from recorded facts is diagnosed from guesses.",
+      "decision": "Persist what happened: batch attempts and outcomes, the rule and row behind each quarantine, each reconciliation check, run phases and timings, delivery attempts, and an append-only audit trail linked by correlation id. Expose liveness, readiness and Prometheus metrics.",
+      "alternatives": [
+        "Rely on application logs only"
+      ],
+      "advantages": [
+        "Lineage from a source row to a version, reconciliation, metric and export.",
+        "Audit links a schedule occurrence to its execution, analysis and delivery without values."
+      ],
+      "costs": [
+        "More rows to store and retain; read-access audit is best-effort.",
+        "Dashboards and alert rules are suggested in the runbook but not shipped."
+      ],
+      "risks": [
+        "Sensitive values must never reach logs or audit: tested."
+      ],
+      "revisit_when": "Alerts and dashboards become necessary for an operations team, or retention requirements change.",
+      "implementation_evidence": [
+        "Scenarios A (lineage), G (append-only audit), T (audit chain)",
+        "docs/runbook.md"
+      ],
+      "refs": [
+        {
+          "label": "Runbook",
+          "path": "docs/runbook.md"
+        },
+        {
+          "label": "Threat model",
+          "path": "docs/threat-model.md"
+        }
+      ],
+      "components": []
+    },
+    {
+      "id": "D-clients",
+      "letter": "I",
+      "title": "One API, two clients",
+      "tags": [
+        "data-architecture",
+        "cost-ops"
+      ],
+      "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
+      "context": "The first release shipped only a native client. A web client lowers the barrier to trying the demo.",
+      "decision": "Both clients render the same API and compute nothing. The web client is served by the API from the same origin, so it needs no CORS and no separate service.",
+      "alternatives": [
+        "A separate web server container",
+        "Server-side rendering"
+      ],
+      "advantages": [
+        "No second source of business logic.",
+        "One container, one origin."
+      ],
+      "costs": [
+        "The API now serves static files, which required a distinct content security policy for the UI.",
+        "The web client is not covered by the recorded scenario suite."
+      ],
+      "risks": [
+        "A mistake in the static handler could serve the wrong files: it only serves files inside the build directory and has path-traversal tests."
+      ],
+      "revisit_when": "Server-side rendering, SSO or a CDN is needed.",
+      "implementation_evidence": [
+        "test/unit/web-hosting.test.ts",
+        "Headless-browser smoke run (not committed as a suite)"
+      ],
+      "refs": [
+        {
+          "label": "ADR 0017",
+          "path": "docs/adr/0017-web-interface.md"
+        },
+        {
+          "label": "ADR 0013",
+          "path": "docs/adr/0013-native-client.md"
+        }
+      ],
+      "components": []
+    }
+  ]
+}

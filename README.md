@@ -14,6 +14,18 @@ The tests check more than that data moved. Every declared business metric and th
 
 ![Native client: a natural-language question, the validated proposal and the role's catalog](docs/demo/query-workspace.png)
 
+## Architecture walkthrough and assistant
+
+Opening <http://localhost:8080> without signing in shows a public walkthrough: why the architecture matters, an interactive diagram generated from the real components, a capability catalog whose status labels come from recorded evidence, actor-based use cases, decision records with alternatives and tradeoffs, the recorded demonstration scenarios, and the limitations. **Ask Clearline** is available on every screen, signed in or not.
+
+- **One content source.** [`content/`](content) (components, diagram, capabilities, decisions, actors, limitations) powers the page, the diagram and the assistant. `test/unit/content.test.ts` checks that every reference and evidence path exists and that a capability cannot be labelled "verified" without test evidence and a recorded result. The code inventory is in [docs/architecture-inventory.md](docs/architecture-inventory.md).
+- **How the assistant answers.** Explanation questions (design, decisions, security, capabilities) use vector retrieval over an approved corpus (content plus selected documents) and return cited sources. With `ANTHROPIC_API_KEY` set in `.env.local` a model phrases the answer from those sources and must cite them; otherwise the answer is labelled excerpts. Questions about *current values* in the demo data are declined: the validated data tools that would answer them are planned (ADR 0018), and the query workspace answers them today.
+- **Vector store.** pgvector inside the same PostgreSQL (the `db/Dockerfile` image), with a small local embedding model baked into the application image. Nothing is sent to an embedding service. Build or refresh the index with `docker compose run --rm index` (or `npm run assistant:index`); changing the embedding model needs `-- --rebuild`.
+- **Public vs signed in.** Anonymous visitors retrieve public documents only. `docs/runbook.md` and `docs/deployment.md` are classified for signed-in users and are neither retrieved nor served to anonymous callers. Public requests are rate limited.
+- **Measured, not claimed.** `npm run assistant:eval` measures retrieval on a version-controlled question set; results and their limits are in [docs/assistant-evaluation.md](docs/assistant-evaluation.md).
+- **Tests.** `npm run test:unit` (content, routing, corpus allow-list, limiter, validation) and `npm run test:integration` (indexing, access classes, grounded and declined answers, injection, public HTTP boundary; the assistant tests need a PostgreSQL with pgvector and skip otherwise).
+- **Not built yet:** assistant data tools (Phase 4), the full end-to-end acceptance suite and security hardening pass (Phase 5). See [docs/production-readiness.md](docs/production-readiness.md) for status.
+
 ## Quick start (Docker)
 
 Requires Docker with Compose v2.
@@ -28,6 +40,8 @@ native/target/release/clearline --url http://localhost:8080
 ```
 
 The web app (`web/`, React + Vite + TypeScript) is a parallel interface to the same API with the same views and permissions as the desktop client. See [web/README.md](web/README.md).
+
+Put optional settings (for example `ANTHROPIC_API_KEY`, `NL_SQL_PROVIDER=anthropic`) in `.env.local`; Compose loads it and git ignores it.
 
 Sign in with a demo token (seeded only outside production, synthetic tenants only):
 

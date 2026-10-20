@@ -9,3 +9,5 @@
 **Costs.** Users install a desktop binary per platform instead of opening a URL; GPUI is pre-1.0 (pinned versions, one vendored compatibility patch); headless testing needs an X server and a Vulkan driver (software rendering works). Only Linux is built and tested here.
 
 **Revisit when** browser access is required again: the API is unchanged, so a web client can be added without touching the backend.
+
+**Update (ADR 0017).** A web client now exists beside the native one and the API serves its static files from the same origin, under a content security policy of its own. API responses keep `default-src 'none'`. The statements above that the API serves no browser content describe the state when this ADR was written; the native client remains the reference client for Scenarios J, O and U.

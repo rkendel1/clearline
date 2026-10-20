@@ -72,7 +72,7 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 | Safe logging | Tested | Unit test; Scenario D captures worker logs |
 | Retention and erasure, including findings and derived data | Tested | Integration tests |
 | Token hashing, listing without secrets, immediate revocation | Tested | Integration tests |
-| API security headers (`default-src 'none'`, `frame-ancestors 'none'`, `no-store`; no browser surface) | Tested | Integration test |
+| API security headers on API responses (`default-src 'none'`, `frame-ancestors 'none'`, `no-store`). The web interface's static files are served with a separate policy (`script-src 'self'`, no inline script or style) | Tested (API headers); web hosting unit test | Integration test; `test/unit/web-hosting.test.ts` |
 | RLS on canonical tenant tables; split DB roles; SSO/MFA; rate limiting; field encryption | **Missing** | See [threat-model.md](threat-model.md) |
 | HIPAA compliance | **Not claimed** | See the threat model's final section |
 
@@ -132,6 +132,20 @@ Nothing here has run in production, so no uptime, scale or compliance claim is m
 | Linux (X11) build and run | Tested | CI and local |
 | macOS and Windows builds | **Unverified** | Supported by GPUI; not built here |
 | Rendering performance with a GPU | **Unverified** | Measured only with software Vulkan (lavapipe) |
+
+## Web interface and assistant
+
+Added after the recorded results at commit `dc06c95`; their evidence is smaller and is stated here, not inherited from the scenario table.
+
+| Capability | Status | Evidence / note |
+|---|---|---|
+| Web client over the same API, served by the API from one origin; token in memory only | Implemented | Hosting unit test (traversal, fallback, API paths); headless-browser smoke run (not a committed suite) |
+| Public landing page, interactive architecture diagram, capability, actor and decision content from one version-controlled source | Tested (content) | `test/unit/content.test.ts` (references, evidence paths, status rules); browser check of the landing, diagram and decision flows (not committed) |
+| Grounded assistant: retrieval over an approved corpus, citations, extractive fallback, declines without evidence | Tested | `test/unit/assistant.test.ts`; `test/integration/assistant.test.ts` (needs pgvector); retrieval evaluation in [assistant-evaluation.md](assistant-evaluation.md) |
+| Public/authenticated document classes; restricted documents not retrievable or servable anonymously | Tested | `test/unit/assistant.test.ts`, `test/integration/assistant.test.ts` |
+| Rate limiting of the assistant (per client and global) | Tested (unit); in-memory per process | Not shared across API replicas |
+| Assistant data tools (questions about current values) | **Missing** (planned, ADR 0018) | The assistant declines such questions |
+| Live model answers | **Unverified in automated tests** | Exercised manually with a configured key; tests use no model |
 
 ## Reporting
 

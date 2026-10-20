@@ -50,6 +50,11 @@ export const metrics = {
   authDenials: new Counter('clearline_authorization_denials_total', 'Authorization denials by reason'),
   analyticsRunSeconds: new Histogram('clearline_analytics_run_seconds', 'Saved-query run execution time (claim to outcome, excluding delivery)', [0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60]),
   analyticsRuns: new Counter('clearline_analytics_runs_total', 'Saved-query runs by outcome'),
+  assistantRequests: new Counter('clearline_assistant_requests_total', 'Assistant questions by category, answer mode and audience'),
+  assistantRetrievalSeconds: new Histogram('clearline_assistant_retrieval_seconds', 'Assistant embedding and vector search time', [0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5]),
+  assistantAnswerSeconds: new Histogram('clearline_assistant_answer_seconds', 'Assistant model answer generation time', [0.25, 0.5, 1, 2.5, 5, 10, 20, 40]),
+  assistantRateLimited: new Counter('clearline_assistant_rate_limited_total', 'Assistant requests refused by the rate limiter'),
+  assistantErrors: new Counter('clearline_assistant_errors_total', 'Assistant failures by subsystem'),
   deliveryAttempts: new Counter('clearline_delivery_attempts_total', 'Delivery attempts by destination kind and result'),
 };
 

@@ -1,0 +1,114 @@
+{
+  "problems": [
+    {
+      "title": "The same metric, calculated differently",
+      "body": "Report A and report B disagree because each re-implements the rule. Clearline compiles the \"trusted dataset\" rule once and every metric, extract and view uses it."
+    },
+    {
+      "title": "Transformations nobody can explain",
+      "body": "Business rules live in a versioned data contract and run as whitelisted operations, so a result can be traced to the rule and the version that produced it."
+    },
+    {
+      "title": "Quality problems found after reporting",
+      "body": "Rows are validated before they count. Failures are quarantined with the rule and source row, and a failing reconciliation check marks the batch untrusted."
+    },
+    {
+      "title": "Queries recreated by hand",
+      "body": "Saved queries are versioned, parameterized and re-validated for whoever runs them."
+    },
+    {
+      "title": "Analyses that depend on a person remembering",
+      "body": "Durable schedules run in the worker without any client, with recorded runs, retries and delivery attempts."
+    },
+    {
+      "title": "Alerts without evidence",
+      "body": "Each analysis states its method, inputs, quality measures and limitations. Findings are statistical deviations, not claimed causes."
+    },
+    {
+      "title": "Sensitive data leaking through side doors",
+      "body": "One field-policy resolver redacts every surface, and permissions are re-checked when scheduled work runs and before delivery."
+    },
+    {
+      "title": "Failures that cannot be diagnosed",
+      "body": "Attempts, outcomes, checks, runs and deliveries are recorded and linked by correlation id in an append-only audit trail."
+    }
+  ],
+  "limitations": [
+    "All data is synthetic. Nothing here has run in production, and no uptime, scale or compliance claim is made, including HIPAA.",
+    "No SSO or MFA, no API rate limiting (the public assistant has its own limiter), no field encryption, no service identities for schedules.",
+    "Benchmarks come from one 4-vCPU machine without a GPU; behaviour beyond 100,000 rows per batch, multiple API instances and multi-day operation is unmeasured.",
+    "The live Claude provider path was not verified in the recorded results, and the optional insight narrator was tested with a stub only.",
+    "Email and webhooks were tested against local receivers, not real relays or remote endpoints.",
+    "macOS and Windows builds of the native client, and GPU rendering, are unverified.",
+    "Alerting rules, dashboards in a monitoring system, automated backups and infrastructure as code are not shipped.",
+    "Test evidence was recorded at commit dc06c95. Later changes (the web client, the assistant) have their own, smaller evidence as stated on each capability."
+  ],
+  "scenarios": [
+    [
+      "A",
+      "Normal ingestion",
+      "1,000 claims become a trusted batch with 9 passing reconciliation checks; the reported total equals the generator's ground truth; lineage runs from source row to export."
+    ],
+    [
+      "C",
+      "Duplicate delivery",
+      "An identical resubmission has no effect; five concurrent duplicates produce one batch."
+    ],
+    [
+      "D",
+      "Bad data",
+      "11 rows quarantined with exact rule and row; reject rate 5.45% exceeds 5%, so the batch is untrusted and excluded from trusted metrics."
+    ],
+    [
+      "F",
+      "Interrupted processing",
+      "A process killed mid-transaction leaves nothing visible and recovers on restart."
+    ],
+    [
+      "G",
+      "Privacy violation",
+      "Cross-tenant reads and sensitive exports are refused and audited at the API and SQL layers."
+    ],
+    [
+      "I",
+      "Reconciliation failure",
+      "Loss in transit and out-of-band drift are detected and explained; metrics are qualified; trust is restored after repair."
+    ],
+    [
+      "J",
+      "Reporting correctness",
+      "14 metrics equal hand-written SQL, generator truth and the native client for both tenants."
+    ],
+    [
+      "K",
+      "Natural-language SQL",
+      "A question becomes a validated proposal; nothing runs until asked; hostile model output is never executed."
+    ],
+    [
+      "N",
+      "Isolation and inference",
+      "24 inference attacks are rejected; with the validator bypassed the database still refuses."
+    ],
+    [
+      "Q",
+      "Scheduling",
+      "A due-time run happens exactly once with two racing schedulers; DST gaps and overlaps behave as documented."
+    ],
+    [
+      "R",
+      "Delivery",
+      "Email, signed webhooks, retries and exports; a field made sensitive after the query blocks delivery."
+    ],
+    [
+      "S",
+      "ML analyses",
+      "A planted anomaly is ranked first by both algorithms with observed value equal to ground truth; seeded outliers ranked 1 to 3."
+    ],
+    [
+      "T",
+      "End to end",
+      "Save, schedule, anomaly, insight, notification; revoke the identity and the pending delivery is blocked."
+    ]
+  ],
+  "recorded_commit": "dc06c95"
+}

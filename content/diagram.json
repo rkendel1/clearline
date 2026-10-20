@@ -1,0 +1,150 @@
+{
+  "edges": [
+    {
+      "from": "users",
+      "to": "clients",
+      "kind": "sync",
+      "label": "People use a client"
+    },
+    {
+      "from": "users",
+      "to": "api",
+      "kind": "sync",
+      "label": "Source systems submit batches over HTTPS"
+    },
+    {
+      "from": "clients",
+      "to": "api",
+      "kind": "sync",
+      "label": "HTTPS + bearer token"
+    },
+    {
+      "from": "api",
+      "to": "pipeline",
+      "kind": "async",
+      "label": "Intake stages a batch and queues it; the worker claims it later"
+    },
+    {
+      "from": "api",
+      "to": "query",
+      "kind": "sync",
+      "label": "Proposals and explicit execution"
+    },
+    {
+      "from": "api",
+      "to": "analytics",
+      "kind": "sync",
+      "label": "Saved queries, schedules, manual runs"
+    },
+    {
+      "from": "pipeline",
+      "to": "postgres",
+      "kind": "sync",
+      "label": "One transaction per batch"
+    },
+    {
+      "from": "query",
+      "to": "postgres",
+      "kind": "sync",
+      "label": "Read-only role, bounded"
+    },
+    {
+      "from": "analytics",
+      "to": "query",
+      "kind": "sync",
+      "label": "Same execution path as a user"
+    },
+    {
+      "from": "analytics",
+      "to": "postgres",
+      "kind": "async",
+      "label": "Scheduler claims runs from the database"
+    },
+    {
+      "from": "postgres",
+      "to": "reporting",
+      "kind": "sync",
+      "label": "Trusted data and contract"
+    },
+    {
+      "from": "postgres",
+      "to": "evidence",
+      "kind": "sync",
+      "label": "Recorded facts"
+    },
+    {
+      "from": "analytics",
+      "to": "delivery",
+      "kind": "async",
+      "label": "Deliveries after the run"
+    },
+    {
+      "from": "reporting",
+      "to": "delivery",
+      "kind": "async",
+      "label": "Extracts and exports"
+    },
+    {
+      "from": "query",
+      "to": "provider",
+      "kind": "sync",
+      "label": "Catalog metadata only; output untrusted"
+    },
+    {
+      "from": "clients",
+      "to": "assistant",
+      "kind": "sync",
+      "label": "Question and page context"
+    },
+    {
+      "from": "assistant",
+      "to": "retrieval",
+      "kind": "retrieval",
+      "label": "Semantic search over approved documents"
+    },
+    {
+      "from": "assistant",
+      "to": "provider",
+      "kind": "retrieval",
+      "label": "Grounded answer phrasing (optional)"
+    },
+    {
+      "from": "assistant",
+      "to": "datatools",
+      "kind": "planned",
+      "label": "Planned: validated data operations"
+    },
+    {
+      "from": "retrieval",
+      "to": "postgres",
+      "kind": "retrieval",
+      "label": "pgvector index (assistant schema)"
+    },
+    {
+      "from": "datatools",
+      "to": "query",
+      "kind": "planned",
+      "label": "Planned: reuse the validated query path"
+    }
+  ],
+  "boundaries": [
+    {
+      "id": "b-api",
+      "label": "Authorization boundary (route permission, tenant check)",
+      "x": 12,
+      "y": 176,
+      "w": 486,
+      "h": 100,
+      "enforced_by": "api"
+    },
+    {
+      "id": "b-db",
+      "label": "Database boundary (tenant scope, RLS, per-role query roles, column grants)",
+      "x": 12,
+      "y": 482,
+      "w": 636,
+      "h": 116,
+      "enforced_by": "postgres"
+    }
+  ]
+}

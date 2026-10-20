@@ -7,3 +7,4 @@ test-results/*.tmp
 native/target
 web/dist/
 web/node_modules/
+.env.local

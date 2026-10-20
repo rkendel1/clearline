@@ -43,7 +43,7 @@ async function raw(method: string, path: string, body: unknown, o: Opts): Promis
     let j: { error?: { code?: string; message?: string; details?: unknown }; correlation_id?: string } = {};
     try { j = await res.json(); } catch { /* not JSON */ }
     const err = new ApiError(res.status, j.error?.code ?? `http_${res.status}`, j.error?.message ?? res.statusText, j.error?.details, j.correlation_id ?? res.headers.get('x-correlation-id') ?? undefined);
-    if (res.status === 401 && !o.quietAuth) onUnauthorized?.();
+    if (res.status === 401 && token && !o.quietAuth) onUnauthorized?.();   // only a held token can have expired; anonymous 401s are ordinary errors
     throw err;
   }
   return res;
