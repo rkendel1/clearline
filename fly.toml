@@ -1,23 +1,53 @@
-# fly.toml app configuration file generated for clearline on 2026-10-20T17:44:01Z
-#
-# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
-#
-
-app = 'clearline'
-primary_region = 'ord'
+# Fly.io deployment: API and worker as two process groups from the one image (see docs/deployment.md, "Fly.io").
+# Set the secrets BEFORE the first `fly deploy` (never put them in this file): DATABASE_URL (via `fly postgres attach`),
+# QUERY_DB_PASSWORD, and optionally ANTHROPIC_API_KEY, METRICS_TOKEN.
+app = "clearline"
+primary_region = "ord"
 
 [build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"            # disables the demo seed and fault injection; requires QUERY_DB_PASSWORD or QUERY_DATABASE_URL
+  LOG_LEVEL = "info"
+  DB_POOL_SIZE = "8"
+  PUBLIC_URL = "https://clearline.fly.dev"   # your app's URL: used in links in notifications and emails
+  # Anonymous data answers stay OFF in production. Set ASSISTANT_PUBLIC_DATA_TENANT only for a tenant holding synthetic data.
+  # NL_SQL_PROVIDER = "anthropic"    # with the ANTHROPIC_API_KEY secret; default is the offline rules provider
+
+[processes]
+  app = "node dist/src/main.js"
+  worker = "node dist/src/worker-main.js"
+
+[deploy]
+  # Applies pending migrations once per deploy, before machines are replaced. /readyz refuses traffic while any are pending.
+  release_command = "node dist/src/cli.js migrate"
 
 [http_service]
+  processes = ["app"]
   internal_port = 8080
   force_https = true
-  auto_stop_machines = 'stop'
+  auto_stop_machines = "off"         # the API must stay up; the scheduler lives in the worker
   auto_start_machines = true
-  min_machines_running = 0
-  processes = ['app']
+  min_machines_running = 1
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+  [[http_service.checks]]
+    method = "GET"
+    path = "/readyz"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "20s"
+
+# The API loads the local embedding model for the assistant (about 600 MB resident): 256 MB machines are killed.
+[[vm]]
+  processes = ["app"]
+  size = "shared-cpu-1x"
+  memory = "1gb"
 
 [[vm]]
-  memory = '1gb'
-  cpu_kind = 'shared'
-  cpus = 1
-  memory_mb = 256
+  processes = ["worker"]
+  size = "shared-cpu-1x"
+  memory = "512mb"

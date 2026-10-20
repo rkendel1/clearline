@@ -109,6 +109,26 @@ The first release needs no Kubernetes. A conventional managed deployment:
 
 The Compose file is the executable specification of the topology: one database, a migration job, N stateless API instances, M workers. Moving to the table above changes where each runs, not what runs.
 
+## Fly.io
+
+[`fly.toml`](../fly.toml) runs the API and the worker as two process groups of one image, applies migrations as the release command, and health-checks `/readyz`. Production mode (`NODE_ENV=production`) **refuses to start** without a query-login secret, which is the usual first failure (`QUERY_DATABASE_URL or QUERY_DB_PASSWORD is required in production`). Set the secrets before the first deploy:
+
+```sh
+fly launch --no-deploy --copy-config --name <app>          # then set PUBLIC_URL in fly.toml to https://<app>.fly.dev
+fly postgres create --name <app>-db && fly postgres attach <app>-db --app <app>     # sets the DATABASE_URL secret
+fly secrets set QUERY_DB_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=')" --app <app>
+# optional: fly secrets set ANTHROPIC_API_KEY=... METRICS_TOKEN=... --app <app>   (and NL_SQL_PROVIDER=anthropic in [env])
+```
+
+Then, one time:
+
+1. **Grant `CREATEROLE`** to the attached database user (creating a tenant creates its reporting role, and the app provisions the per-role query roles): `fly postgres connect -a <app>-db`, then `ALTER ROLE <user> CREATEROLE;`.
+2. **Deploy:** `fly deploy`. The release command runs `node dist/src/cli.js migrate`.
+3. **Create the first platform-admin token** (production has no seed): `fly ssh console -C "node dist/src/cli.js platform-admin"`. It prints the token once. Use it to create your tenant and its first admin and approver tokens (`POST /api/v1/tenants`, then `POST /api/v1/tenants/<id>/tokens`; see [api.md](api.md)).
+4. **Build the assistant index (optional):** `fly ssh console -C "node dist/src/cli.js assistant-index"`. It needs the pgvector extension. Fly's unmanaged Postgres image does not ship it, so there the command reports `no_extension` and the assistant says retrieval is unavailable instead of guessing; everything else works. Use a Postgres with pgvector (or the `db/Dockerfile` image) to enable it.
+
+Sizing: the API machine needs about 1 GB because the assistant's embedding model is loaded in process (`fly.toml` sets it). The demo seed never runs in production, and anonymous assistant data answers stay off unless you set `ASSISTANT_PUBLIC_DATA_TENANT`.
+
 ## Database privileges
 
 The bootstrap role needs `CREATEROLE`, because creating a tenant creates its reporting role. For production, split it into an owner/migration role (DDL, role creation) and a runtime role (DML only, member of `clearline_service`). That split is listed under gaps in [threat-model.md](threat-model.md) and [production-readiness.md](production-readiness.md).
