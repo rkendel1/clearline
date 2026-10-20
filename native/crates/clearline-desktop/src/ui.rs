@@ -138,3 +138,25 @@ pub fn simple_table_weighted(headers: &[&str], rows: Vec<Vec<AnyElement>>, numer
 }
 
 pub fn text(s: impl Into<SharedString>) -> AnyElement { div().child(s.into()).into_any_element() }
+
+/// A toggle chip (filters, choices). The caller attaches the click handler.
+pub fn chip(id: impl Into<SharedString>, label: impl Into<SharedString>, on: bool, cx: &App) -> gpui::Stateful<Div> {
+    let p = pal(cx);
+    div().id(id.into()).px_2().py(px(3.)).rounded(px(4.)).border_1().text_xs().cursor_pointer()
+        .border_color(if on { p.accent } else { p.rule_strong }).bg(if on { p.accent } else { p.surface }).text_color(if on { p.accent_ink } else { p.ink2 })
+        .child(label.into())
+}
+
+/// Severity of an insight or notification as a status signal.
+pub fn severity(s: &str, cx: &App) -> Div {
+    match s { "high" => signal(Tone::Bad, "high", cx), "medium" => signal(Tone::Warn, "medium", cx), "low" => signal(Tone::Warn, "low", cx), _ => signal(Tone::Idle, "info", cx) }
+}
+
+/// Run / phase status as a status signal.
+pub fn run_signal(status: &str, cx: &App) -> Div {
+    let (t, l) = match status {
+        "succeeded" | "delivered" | "active" => (Tone::Good, status), "paused" => (Tone::Warn, status), "failed" | "denied" | "blocked" | "timed_out" => (Tone::Bad, status),
+        "partial" | "delivering" | "retrying" | "pending" | "queued" | "running" | "sending" => (Tone::Warn, status), s => (Tone::Idle, s),
+    };
+    signal(t, l.replace('_', " "), cx)
+}

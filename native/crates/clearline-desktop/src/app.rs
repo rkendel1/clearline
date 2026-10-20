@@ -5,28 +5,31 @@
 use crate::perf::Perf;
 use crate::theme::{self, Palette};
 use crate::ui::{self, pal, Tone};
-use crate::views::{audit::AuditView, batch::BatchView, contracts::ContractsView, exceptions::ExceptionsView, fields::FieldsView, history::HistoryView,
-    lineage::LineageView, metrics::MetricsView, overview::OverviewView, query::QueryView, records::RecordsView, signin::SignInView};
+use crate::views::{audit::AuditView, batch::BatchView, contracts::ContractsView, destinations::DestinationsView, exceptions::ExceptionsView, fields::FieldsView, history::HistoryView,
+    library::LibraryView, lineage::LineageView, metrics::MetricsView, notifications::NotificationsView, overview::OverviewView, query::QueryView, records::RecordsView, run::RunView,
+    runs::RunsView, signin::SignInView};
 use clearline_client::Session;
 use gpui::{div, prelude::*, px, AnyElement, App, Context, Entity, FontWeight, Hsla, SharedString, WeakEntity, Window};
 use gpui_component::{h_flex, v_flex};
 use serde_json::{json, Value};
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Route { Overview, Batch(String), Exceptions, Records, Lineage, Contracts, Metrics, Query, History, Fields, Audit }
+pub enum Route { Overview, Batch(String), Exceptions, Records, Lineage, Contracts, Metrics, Query, History, Fields, Audit, Library, Runs, Run(String), Notifications, Destinations }
 
 impl Route {
     pub fn id(&self) -> &'static str {
         match self {
             Route::Overview => "overview", Route::Batch(_) => "batch", Route::Exceptions => "exceptions", Route::Records => "records", Route::Lineage => "lineage",
             Route::Contracts => "contracts", Route::Metrics => "metrics", Route::Query => "query", Route::History => "history", Route::Fields => "fields", Route::Audit => "audit",
+            Route::Library => "library", Route::Runs => "runs", Route::Run(_) => "run", Route::Notifications => "notifications", Route::Destinations => "destinations",
         }
     }
     pub fn parse(s: &str, arg: Option<&str>) -> Option<Route> {
         Some(match s {
             "overview" => Route::Overview, "batch" => Route::Batch(arg?.to_string()), "exceptions" => Route::Exceptions, "records" => Route::Records,
             "lineage" => Route::Lineage, "contracts" => Route::Contracts, "metrics" => Route::Metrics, "query" => Route::Query, "history" => Route::History,
-            "fields" => Route::Fields, "audit" => Route::Audit, _ => return None,
+            "fields" => Route::Fields, "audit" => Route::Audit, "library" => Route::Library, "runs" => Route::Runs, "run" => Route::Run(arg?.to_string()),
+            "notifications" => Route::Notifications, "destinations" => Route::Destinations, _ => return None,
         })
     }
 }
@@ -39,6 +42,10 @@ pub const NAV: &[(&str, &str, &str)] = &[
     ("Lineage", "lineage", "lineage:read"),
     ("Query workspace", "query", "query:propose"),
     ("Query history", "history", "query:history"),
+    ("Saved queries", "library", "saved_query:read"),
+    ("Run history", "runs", "saved_query:read"),
+    ("Notifications", "notifications", "notification:read"),
+    ("Delivery", "destinations", "delivery:manage"),
     ("Field policies", "fields", "policy:read"),
     ("Contracts", "contracts", "contract:read"),
     ("Metric definitions", "metrics", "report:read"),
@@ -58,6 +65,11 @@ struct Views {
     history: Option<Entity<HistoryView>>,
     fields: Option<Entity<FieldsView>>,
     audit: Option<Entity<AuditView>>,
+    library: Option<Entity<LibraryView>>,
+    runs: Option<Entity<RunsView>>,
+    run: Option<Entity<RunView>>,
+    notifications: Option<Entity<NotificationsView>>,
+    destinations: Option<Entity<DestinationsView>>,
 }
 
 /// What every view needs: the session and a handle back to the shell (navigation, expiry).
@@ -173,6 +185,14 @@ impl Shell {
             Route::Audit => {
                 match &self.views.audit { Some(a) => a.update(cx, |a, cx| a.reload(cx)), None => self.views.audit = Some(cx.new(|cx| AuditView::new(c, window, cx))) }
             }
+            Route::Library => { if self.views.library.is_none() { self.views.library = Some(cx.new(|cx| LibraryView::new(c, window, cx))); } }
+            Route::Runs => { match &self.views.runs { Some(r) => r.update(cx, |r, cx| r.reload(cx)), None => self.views.runs = Some(cx.new(|cx| RunsView::new(c, cx))) } }
+            Route::Run(id) => {
+                let id = id.clone();
+                match &self.views.run { Some(r) => r.update(cx, |r, cx| r.open(id, cx)), None => self.views.run = Some(cx.new(|cx| RunView::new(c, id, window, cx))) }
+            }
+            Route::Notifications => { match &self.views.notifications { Some(n) => n.update(cx, |n, cx| n.reload(cx)), None => self.views.notifications = Some(cx.new(|cx| NotificationsView::new(c, cx))) } }
+            Route::Destinations => { match &self.views.destinations { Some(d) => d.update(cx, |d, cx| d.reload(cx)), None => self.views.destinations = Some(cx.new(|cx| DestinationsView::new(c, window, cx))) } }
         }
         self.route = route;
         cx.notify();
@@ -190,11 +210,19 @@ impl Shell {
         if let Some(q) = &self.views.query { q.update(cx, |q, cx| q.load_sql(sql, parent, window, cx)); }
     }
 
+    /// Open a saved query in the library (from a run, a notification or the workspace).
+    pub fn open_saved_query(&mut self, id: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.navigate(Route::Library, window, cx);
+        if let Some(l) = &self.views.library { l.update(cx, |l, cx| { l.select(id, cx); l.reload(cx); }); }
+    }
+
     /// After a policy change, views that show field values must re-fetch under the new policy.
     pub fn policy_changed(&mut self, cx: &mut Context<Self>) {
         if let Some(q) = &self.views.query { q.update(cx, |q, cx| q.policy_changed(cx)); }
         if let Some(r) = &self.views.records { r.update(cx, |r, cx| r.reload(cx)); }
         if let Some(h) = &self.views.history { h.update(cx, |h, cx| h.reload(cx)); }
+        if let Some(l) = &self.views.library { l.update(cx, |l, cx| l.refresh_selected(cx)); }
+        if let Some(r) = &self.views.run { r.update(cx, |r, cx| r.reload(cx)); }
         self.views.lineage = None;
         self.views.exceptions = None;
         self.views.batch = None;
@@ -210,6 +238,11 @@ impl Shell {
     pub fn fields_view(&self) -> Option<&Entity<FieldsView>> { self.views.fields.as_ref() }
     pub fn records_view(&self) -> Option<&Entity<RecordsView>> { self.views.records.as_ref() }
     pub fn history_view(&self) -> Option<&Entity<HistoryView>> { self.views.history.as_ref() }
+    pub fn library_view(&self) -> Option<&Entity<LibraryView>> { self.views.library.as_ref() }
+    pub fn run_view(&self) -> Option<&Entity<RunView>> { self.views.run.as_ref() }
+    pub fn runs_view(&self) -> Option<&Entity<RunsView>> { self.views.runs.as_ref() }
+    pub fn notifications_view(&self) -> Option<&Entity<NotificationsView>> { self.views.notifications.as_ref() }
+    pub fn destinations_view(&self) -> Option<&Entity<DestinationsView>> { self.views.destinations.as_ref() }
 
     pub fn busy(&self, cx: &App) -> bool {
         if self.signin.read(cx).busy { return true; }
@@ -219,7 +252,9 @@ impl Shell {
             || v.lineage.as_ref().is_some_and(|x| x.read(cx).busy()) || v.contracts.as_ref().is_some_and(|x| x.read(cx).busy())
             || v.metrics.as_ref().is_some_and(|x| x.read(cx).busy()) || v.query.as_ref().is_some_and(|x| x.read(cx).busy())
             || v.history.as_ref().is_some_and(|x| x.read(cx).busy()) || v.fields.as_ref().is_some_and(|x| x.read(cx).busy())
-            || v.audit.as_ref().is_some_and(|x| x.read(cx).busy())
+            || v.audit.as_ref().is_some_and(|x| x.read(cx).busy()) || v.library.as_ref().is_some_and(|x| x.read(cx).busy() || x.read(cx).analysis_builder.read(cx).busy() || x.read(cx).schedule_editor.read(cx).busy())
+            || v.runs.as_ref().is_some_and(|x| x.read(cx).busy()) || v.run.as_ref().is_some_and(|x| x.read(cx).busy())
+            || v.notifications.as_ref().is_some_and(|x| x.read(cx).busy()) || v.destinations.as_ref().is_some_and(|x| x.read(cx).busy())
     }
 
     /// What the window currently shows, as data (for the automated end-to-end tests).
@@ -238,6 +273,11 @@ impl Shell {
             Route::History => v.history.as_ref().map(|x| x.read(cx).snapshot()),
             Route::Fields => v.fields.as_ref().map(|x| x.read(cx).snapshot()),
             Route::Audit => v.audit.as_ref().map(|x| x.read(cx).snapshot()),
+            Route::Library => v.library.as_ref().map(|x| x.read(cx).snapshot(cx)),
+            Route::Runs => v.runs.as_ref().map(|x| x.read(cx).snapshot()),
+            Route::Run(_) => v.run.as_ref().map(|x| x.read(cx).snapshot(cx)),
+            Route::Notifications => v.notifications.as_ref().map(|x| x.read(cx).snapshot()),
+            Route::Destinations => v.destinations.as_ref().map(|x| x.read(cx).snapshot(cx)),
         };
         json!({ "signed_in": true, "actor": s.me.actor, "tenant": s.me.tenant_id, "role": s.me.role, "route": self.route.id(),
             "nav": self.visible_nav().iter().map(|(l, _)| l).collect::<Vec<_>>(), "theme": if self.dark { "dark" } else { "light" }, "view": view })
@@ -248,7 +288,9 @@ impl Shell {
         let s = self.session.as_ref().expect("rail is shown only when signed in");
         let current = self.route.id();
         let items: Vec<AnyElement> = self.visible_nav().into_iter().map(|(label, id)| {
-            let active = current == id || (id == "overview" && current == "batch");
+            let active = current == id || (id == "overview" && current == "batch") || (id == "runs" && current == "run");
+            let unread = if id == "notifications" { self.views.notifications.as_ref().map(|n| n.read(cx).unread()).unwrap_or(0) } else { 0 };
+            let label = if unread > 0 { format!("{label} ({unread})") } else { label.to_string() };
             let route_id: SharedString = id.into();
             div().id(route_id.clone()).px_3().py(px(7.)).rounded(px(3.)).border_l_4().cursor_pointer()
                 .border_color(if active { p.rail_ink } else { gpui::transparent_black() })
@@ -287,7 +329,9 @@ impl Shell {
             Route::Overview => self.views.overview.is_none(), Route::Batch(_) => self.views.batch.is_none(), Route::Exceptions => self.views.exceptions.is_none(),
             Route::Records => self.views.records.is_none(), Route::Lineage => self.views.lineage.is_none(), Route::Contracts => self.views.contracts.is_none(),
             Route::Metrics => self.views.metrics.is_none(), Route::Query => self.views.query.is_none(), Route::History => self.views.history.is_none(),
-            Route::Fields => self.views.fields.is_none(), Route::Audit => self.views.audit.is_none(),
+            Route::Fields => self.views.fields.is_none(), Route::Audit => self.views.audit.is_none(), Route::Library => self.views.library.is_none(),
+            Route::Runs => self.views.runs.is_none(), Route::Run(_) => self.views.run.is_none(), Route::Notifications => self.views.notifications.is_none(),
+            Route::Destinations => self.views.destinations.is_none(),
         };
         if needs { let r = self.route.clone(); self.navigate(r, window, cx); }
         let v = &self.views;
@@ -303,6 +347,11 @@ impl Shell {
             Route::History => v.history.clone().unwrap().into_any_element(),
             Route::Fields => v.fields.clone().unwrap().into_any_element(),
             Route::Audit => v.audit.clone().unwrap().into_any_element(),
+            Route::Library => v.library.clone().unwrap().into_any_element(),
+            Route::Runs => v.runs.clone().unwrap().into_any_element(),
+            Route::Run(_) => v.run.clone().unwrap().into_any_element(),
+            Route::Notifications => v.notifications.clone().unwrap().into_any_element(),
+            Route::Destinations => v.destinations.clone().unwrap().into_any_element(),
         }
     }
 }

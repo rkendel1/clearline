@@ -92,3 +92,67 @@ fn every_role_decodes_what_it_may_see_and_is_refused_the_rest() {
     match bf.client.catalog("northwind") { Err(ApiError::Forbidden { code, .. }) => assert_eq!(code, "cross_tenant_denied"), other => panic!("{other:?}") }
     let _ = Client::new(&base, "x");
 }
+
+#[test]
+fn analytics_endpoints_decode_for_every_role_and_respect_permissions() {
+    use serde_json::json;
+    if url().is_none() { eprintln!("CLEARLINE_TEST_URL not set; skipping"); return };
+    let admin = session("cl_dev_northwind_admin");
+    let t = "northwind";
+    let run_tag = &new_execution_id()[..8]; // names are unique per tenant; the test can run again
+    // Destinations: created by delivery:manage holders only, listed for schedule managers.
+    let inbox = admin.client.create_destination(t, &json!({ "name": format!("Contract-test inbox {run_tag}"), "kind": "in_app", "config": { "recipients": ["$owner"] } })).unwrap();
+    assert_eq!(inbox.kind, "in_app");
+    for role in ["admin", "steward", "operator", "reporter"] {
+        let s = session(&format!("cl_dev_northwind_{role}"));
+        let c = &s.client;
+        let can = |p: &str| s.can(p);
+        let check = |name: &str, allowed: bool, r: Result<(), ApiError>| match (allowed, r) {
+            (true, Ok(())) => {}
+            (false, Err(ApiError::Forbidden { .. })) => {}
+            (a, r) => panic!("{role} {name}: allowed={a} got {r:?}"),
+        };
+        // Save a validated proposal; read it back; run it synchronously with a bound parameter.
+        let p = c.propose_question(t, "How many claims are there?").unwrap();
+        let q = c.create_saved_query(t, &json!({ "name": format!("Contract test ({role}) {run_tag}"), "proposal_id": p.id })).unwrap();
+        assert_eq!(q.version, 1);
+        assert!(c.saved_queries(t, "?scope=mine").unwrap().items.iter().any(|i| i.id == q.id));
+        let v2 = c.new_version(t, &q.id, &json!({ "sql": "SELECT count(*) AS n FROM claim WHERE service_date >= :since", "parameters": [{ "name": "since", "type": "date", "default": "2026-01-01" }] })).unwrap();
+        assert_eq!(v2.version, 2);
+        assert_eq!(c.saved_version(t, &q.id, 1).unwrap().version, 1);
+        let ex = c.execute_saved(t, &q.id, "preview", &json!({ "since": "2026-06-01" })).unwrap();
+        assert_eq!(ex.status, "succeeded");
+        assert!(c.validate_analysis(t, &q.id, &json!({ "type": "outlier", "features": ["n"] })).is_ok());
+        c.set_favorite(t, &q.id, true).unwrap();
+        let dup = c.duplicate_saved_query(t, &q.id, None).unwrap();
+        assert_ne!(dup.id, q.id);
+        // Schedules and runs (no worker here: runs stay queued and still decode).
+        check("destinations", can("schedule:manage"), c.destinations(t).map(|d| assert!(d.items.iter().any(|x| x.id == inbox.id))));
+        check("create destination", can("delivery:manage"), c.create_destination(t, &json!({ "name": format!("{role} inbox {run_tag}"), "kind": "in_app", "config": { "recipients": ["$owner"] } })).map(|_| ()));
+        let pv = c.preview_schedule(t, &json!({ "recurrence": { "frequency": "weekly", "weekdays": ["MO"], "at": "09:30" }, "start_local": "2027-01-04T09:30", "timezone": "Europe/Berlin", "count": 3 })).unwrap();
+        assert_eq!(pv.next.len(), 3);
+        let sch = c.create_schedule(t, &json!({ "query_id": q.id, "recurrence": { "frequency": "monthly", "month_day": -1, "at": "18:00" }, "start_local": "2027-01-31T18:00", "timezone": "UTC",
+            "run_as_role": role, "destination_ids": [inbox.id] })).unwrap();
+        assert_eq!(sch.rrule.as_deref(), Some("FREQ=MONTHLY;BYMONTHDAY=-1;BYHOUR=18;BYMINUTE=0"));
+        assert!(c.schedules(t, Some(&q.id)).unwrap().iter().any(|x| x.id == sch.id));
+        let queued = c.run_schedule_now(t, &sch.id).unwrap();
+        assert_eq!(queued.status, "queued");
+        let run = c.run(t, &queued.run_id).unwrap();
+        assert_eq!(run.run.status, "queued");
+        assert!(c.runs(t, "?limit=5").unwrap().items.iter().any(|i| i.run.id == queued.run_id));
+        assert_eq!(c.schedule_action(t, &sch.id, "pause").unwrap().status, "paused");
+        c.notifications(t, false).unwrap();
+        // Delegation: no identity above one's own role.
+        if role == "reporter" {
+            match c.create_schedule(t, &json!({ "query_id": q.id, "recurrence": { "frequency": "daily", "at": "06:00" }, "start_local": "2027-01-01T06:00", "timezone": "UTC", "run_as_role": "admin" })) {
+                Err(ApiError::Forbidden { .. }) => {}
+                other => panic!("reporter delegated to admin: {other:?}"),
+            }
+        }
+    }
+    // Approvers have no analytics; other tenants cannot read these queries.
+    let ap = session("cl_dev_northwind_approver");
+    assert!(matches!(ap.client.saved_queries(t, ""), Err(ApiError::Forbidden { .. })));
+    let bf = session("cl_dev_bluefin_admin");
+    match bf.client.saved_queries(t, "") { Err(ApiError::Forbidden { code, .. }) => assert_eq!(code, "cross_tenant_denied"), other => panic!("{other:?}") }
+}

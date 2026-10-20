@@ -53,6 +53,11 @@ pub struct QueryView {
     applied_at: Option<(Instant, i64)>,
     scroll: ScrollHandle,
     scroll_to: Option<usize>,
+    /// "Save as saved query": name input, in-flight flag, and the saved id to open on the next render.
+    pub save_name: Entity<InputState>,
+    saving: bool,
+    pending_open: Option<String>,
+    pub saved_id: Option<String>,
 }
 
 impl QueryView {
@@ -69,7 +74,8 @@ impl QueryView {
             }
         }).detach();
         let grid = grid::new_grid(window, cx);
-        let mut v = QueryView { c, question, sql, catalog: Resource::default(), proposal: None, result: None, grid, phase: Phase::Idle, running_execution: None,
+        let save_name = cx.new(|cx| InputState::new(window, cx).placeholder("Name for the saved query"));
+        let mut v = QueryView { save_name, saving: false, pending_open: None, saved_id: None, c, question, sql, catalog: Resource::default(), proposal: None, result: None, grid, phase: Phase::Idle, running_execution: None,
             error: None, notice: None, show_validated: false, task: None, loaded_sql: String::new(), sql_dirty: false, pending_proposal: None, applied_at: None, scroll: ScrollHandle::new(), scroll_to: None };
         v.load_catalog(cx);
         v
@@ -185,6 +191,25 @@ impl QueryView {
         cx.notify();
     }
 
+    /// Save the current, validated proposal as a saved query (the server re-validates it for this role).
+    pub fn save_as(&mut self, cx: &mut Context<Self>) {
+        let Some(p) = &self.proposal else { return };
+        if !p.executable || self.sql_dirty || self.saving { return; }
+        let name = self.save_name.read(cx).value().trim().to_string();
+        if name.is_empty() { self.notice = Some((Tone::Warn, "Give the saved query a name.".into())); cx.notify(); return; }
+        let (cl, t, id) = (self.c.client(), self.c.tenant(), p.id.clone());
+        self.saving = true;
+        self.error = None;
+        self.task = Some(spawn_fetch(cx, self.c.shell.clone(), move || cl.create_saved_query(&t, &json!({ "name": name, "proposal_id": id })), |this: &mut Self, r, cx| {
+            this.saving = false;
+            match r {
+                Ok(d) => { this.notice = Some((Tone::Good, format!("Saved as \"{}\" (version 1).", d.name))); this.saved_id = Some(d.id.clone()); this.pending_open = Some(d.id); cx.notify(); }
+                Err(e) => this.error = Some(e),
+            }
+        }));
+        cx.notify();
+    }
+
     pub fn cancel(&mut self, cx: &mut Context<Self>) {
         let Some(exec) = self.running_execution.clone() else { return };
         let (cl, t) = (self.c.client(), self.c.tenant());
@@ -241,6 +266,7 @@ impl QueryView {
                 "columns": r.columns, "error": r.error, "grid_rows": g.rows.len(), "displayed": g.displayed(5) })),
             "error": self.error.as_ref().map(|e| json!({ "code": e.code(), "message": e.user_message() })),
             "notice": self.notice.as_ref().map(|n| n.1.clone()),
+            "saved_id": self.saved_id,
         })
     }
 
@@ -288,6 +314,11 @@ impl QueryView {
                 .on_click(cx.listener(|this, _, window, cx| this.execute("run", window, cx))))
             .child(Button::new("cancel").danger().label("Cancel").disabled(!running).on_click(cx.listener(|this, _, _, cx| this.cancel(cx))))
             .child(Button::new("export").label("Export CSV").disabled(!can_run).on_click(cx.listener(|this, _, _, cx| this.export(cx)))));
+        if can_run && self.c.can("saved_query:write") {
+            panel = panel.child(h_flex().gap_2().items_center().child(div().w(px(300.)).child(Input::new(&self.save_name)))
+                .child(Button::new("save-query").label("Save as saved query").loading(self.saving).disabled(self.saving).on_click(cx.listener(|this, _, _, cx| this.save_as(cx))))
+                .child(ui::muted("Keeps the question, the SQL and its output schema as version 1; schedules and analyses are set up in Saved queries.", cx)));
+        }
         if self.sql_dirty && self.proposal.is_some() {
             panel = panel.child(ui::note(Tone::Warn, "The SQL was edited. Validate the edit to create a new proposal before running it; the previous validation does not apply to the edited text.", cx));
         }
@@ -351,6 +382,7 @@ impl QueryView {
 impl Render for QueryView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some(p) = self.pending_proposal.take() { self.set_proposal(p, window, cx); self.scroll_to = Some(SECTION_PROPOSAL); }
+        if let Some(id) = self.pending_open.take() { let shell = self.c.shell.clone(); let _ = shell.update(cx, |s, cx| s.open_saved_query(id, window, cx)); }
         if let Some(ix) = self.scroll_to.take() { self.scroll.scroll_to_top_of_item(ix); }
         if let Some((started, rows)) = self.applied_at.take() { perf::mark_after_next_frame(window, format!("query result ({rows} rows): request -> frame drawn"), started); }
         let p = pal(cx);
