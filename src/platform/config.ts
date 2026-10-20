@@ -88,6 +88,8 @@ let cached: Config | undefined;
 export function loadConfig(): Config {
   if (cached) return cached;
   const env = str('NODE_ENV', 'development') as Config['env'];
+  // A silent localhost default in production only shows up later as ECONNREFUSED; say what is missing instead.
+  if (env === 'production' && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is required in production (on Fly: fly postgres attach <db-app> --app <app>, or fly secrets set DATABASE_URL=...)');
   const cfg: Config = {
     databaseUrl: str('DATABASE_URL', 'postgres://clearline:clearline@localhost:5432/clearline'),
     port: int('PORT', 8080),
