@@ -1,6 +1,6 @@
 # Privacy and tenant-isolation threat model
 
-**Scope.** The Clearline API, worker, dashboard and PostgreSQL database as deployed by this repository. **Data.** Exclusively synthetic. SSNs use the never-issued 9xx range, names come from fixed word lists, and emails use `example.test`. Clearline must not be used with real member or patient information in its current form.
+**Scope.** The Clearline API, worker, native desktop client, query workspace (including the optional external model provider) and PostgreSQL database as deployed by this repository. **Data.** Exclusively synthetic. SSNs use the never-issued 9xx range, names come from fixed word lists, and emails use `example.test`. Clearline must not be used with real member or patient information in its current form.
 
 **This is not a HIPAA compliance claim.** The controls below are real and tested, but compliance depends on administrative, physical and organisational safeguards, contracts (BAAs) and audited operation that a repository cannot supply. The gap list at the end says what a regulated deployment would still need.
 
@@ -15,15 +15,22 @@
 | API tokens | `core.api_tokens` (SHA-256 hashes only) | Credential |
 | Audit trail, export log, erasure log | `core.audit_events`, `core.export_log`, `core.erasure_log` | Integrity-critical |
 | Contracts (which fields are sensitive) | `core.contract_versions` | Integrity-critical |
+| Field policies (role access, sensitivity, redaction, unmask roles) and their history | `core.field_policies`, `core.field_policy_versions` | Integrity-critical: a wrong policy discloses data |
+| Query proposals and execution metadata (questions, SQL, columns, timings; never result rows) | `core.query_proposals`, `core.query_executions` | High: SQL text can carry literals a user typed |
+| Query surface: per-tenant views, query roles and their column grants, the query login | `q_<tenant>.*`, `clearline_q_<tenant>_<role>`, `clearline_query` | Enforcement-critical |
+| Query results displayed or exported | native client memory; CSV downloads | High (already redacted for the role) |
 
 ## Actors and trust boundaries
 
-1. **Tenant users** (admin, operator, reporter) via API tokens: trusted only within their tenant and role.
+1. **Tenant users** (admin, steward, operator, reporter) via API tokens: trusted only within their tenant and role. The **steward** classifies data: it may tighten field policies but not widen them (that needs `policy:grant`, admin only), and it sees original sensitive values only where a policy names it.
 2. **Platform administrator**: creates tenants, issues each tenant's *first* admin token, and issues approver tokens. It has no tenant data permissions, cannot issue further admin, operator or reporter tokens once a tenant has an admin, and cannot revoke admins (which would let it re-bootstrap).
 3. **Approvers**: decide breaking contract migrations. They can read contracts and migration plans only, with no tenant data. Their tokens come only from the platform administrator, so no tenant admin can approve their own change.
 4. **BI users** via a database login granted a tenant reporting role: may read only `reporting.*` and `t_<tenant>.rpt_*`.
 5. **Source systems**: submit data with an operator token; payload contents are untrusted input.
-6. **The service itself** (DB role `clearline`, member of `clearline_service`): fully trusted; compromise is out of scope beyond the noted gaps.
+6. **The model provider** (optional, e.g. Anthropic): receives the question and the *role-filtered* catalog (table, column and type names, descriptions, the role's access levels; never values, never fields hidden from the role). Its output is **untrusted**: it is treated exactly like SQL typed by the user.
+7. **The query login** `clearline_query`: owns no privileges and can only `SET ROLE` to the query roles; queries run under it on a separate pool.
+8. **Native client**: runs on the user's machine with the user's token; trusted to display what the server sends and nothing more. It holds no authorization logic, so a modified client gains nothing the API would not give the same token.
+9. **The service itself** (DB role `clearline`, member of `clearline_service`): fully trusted; compromise is out of scope beyond the noted gaps.
 
 ## Threats and controls
 
@@ -40,8 +47,14 @@
 | T9 | Privilege escalation | Role → permission table enforced by the backend. The platform admin is bootstrap-only (above). Breaking contract migrations need an **approver**, a separate role with no data access that tenant admins cannot create, plus an explicit version confirmation. A single person therefore cannot both make and approve a breaking change without the platform administrator's cooperation. | Integration tests; Scenario H; mutations `platform-admin-escalation`, `self-approval-allowed` |
 | T10 | Malicious contract (code execution, SQL injection via identifiers) | Contracts are data: JSON Schema with `additionalProperties: false`, whitelisted transforms and formats only, no regex/code/SQL fields; identifiers pattern-checked and quoted; generated DDL never drops | Unit tests (contracts), Scenario H |
 | T11 | Malicious payload (injection, resource exhaustion) | All values are bound parameters; size and row limits (`MAX_UPLOAD_BYTES`, `MAX_ROWS_PER_BATCH`); statement and batch timeouts; JSON records must be flat scalars | Unit tests (adapters), config |
-| T12 | Browser-side token theft (XSS) or clickjacking | Strict CSP (`default-src 'self'`, no inline script, no third-party origins, fonts self-hosted), `frame-ancestors 'none'`, `nosniff`, `no-referrer`; token kept in `sessionStorage` only; API responses `no-store` | Integration test (headers); e2e (no CSP violations) |
+| T12 | Client-side token theft or a browser being used against the API | There is no browser surface: the web dashboard was removed and the API serves JSON only, with `default-src 'none'; frame-ancestors 'none'`, `nosniff`, `no-referrer` and `no-store`. The native client keeps the token in process memory only (never on disk; `CLEARLINE_TOKEN` is a development convenience) and drops it on sign-out or on any `401`. | Integration test (headers); native e2e (sign-out, role navigation) |
 | T13 | Data outlives its purpose | Configurable retention per tenant (raw payloads, resolved quarantine, superseded versions, audit). Subject erasure removes all versions, the raw payloads that produced them, quarantine entries and per-record findings; records only a hash of the key in the erasure log; lists prior exports that contained the subject; and records adjustments so reconciliation stays honest. | Integration tests (erasure, retention) |
+| T14 | Model output is malicious or wrong (prompt injection through the question or through descriptions; SQL that writes, escapes the tenant or touches restricted fields) | The proposal is never trusted. Every proposal, generated or edited, goes through the same AST allowlist validator (`src/query/validate.ts`, libpg-query; no regex decisions), is rewritten onto the role's views, deparsed, **re-parsed and re-checked**, and is re-validated again at execution against the policy in force then. Nothing runs without an explicit run or preview by the user. The model's explanation is displayed as unverified; the structural summary shown beside it is computed by the server. | Unit tests (12 validator groups); Scenario K (lifecycle, hostile model output never executed), Scenario N1 (24 attacks); mutations `validator-restricted-check-removed`, `execute-without-revalidation` |
+| T15 | A role reaches a restricted field indirectly: aliases, joins, subqueries, CTEs, aggregates, `ORDER BY`, `CASE`, functions, error messages, previews, history, exports | Column **lineage** is tracked through aliases, subqueries and CTEs; restricted fields are allowed only in the explicitly documented forms (related-key equality, `IS NULL`, key `IN (subquery)`, pass-through) and masked outputs are rewritten to `core.mask_value`. Hidden fields fail with the *same* message as nonexistent ones. Database errors are classified so no message carries a value the role cannot see. History re-validates each entry for the viewer and withholds other users' SQL that the viewer may not use; exports re-run the validated query under the viewer's role. | Scenario L (catalog, errors, history, export, audit), Scenario N1/N3; mutations `validator-restricted-check-removed`, `mask-rewrite-skipped`, `history-not-withheld`, `records-unredacted` |
+| T16 | Validator bypass (a parser or validator bug, or a code path that forgets to validate) | **The database is the second boundary.** Queries run as `clearline_query` → `SET LOCAL ROLE clearline_q_<tenant>_<role>`, `BEGIN READ ONLY`, `search_path=pg_catalog`, statement timeout, with `current_user`/`session_user`/read-only verified before the SQL runs. The query role can read only its tenant's `q_<tenant>` views (RLS through `core.reporting_roles`) and only the columns its policy grants; hidden and discover-only columns are not granted at all. `RESET ROLE` lands in a login that can read nothing. Grants are regenerated in the same transaction as every policy or contract change. | Scenario N2 (validator bypassed: writes, other tenant, ungranted column, `RESET ROLE`); Scenario L (grants mirror policy); mutation `hidden-columns-granted` |
+| T17 | Query resource exhaustion (expensive joins, huge results, many parallel runs, runaway queries) | Planner cost limit (`EXPLAIN`, `QUERY_MAX_COST`) checked before running; statement timeout; row and serialized-byte caps; per-tenant and global concurrency limits that refuse with `429` instead of queueing; user cancellation via `pg_cancel_backend`; validator size, depth, subquery and `FROM` limits; separate connection pool so queries cannot starve ingestion. | Scenario N4/N5 (timeout, cancel, cost, caps, concurrency); `docs/benchmark.md` (concurrency) |
+| T18 | Data exposure to the model provider | Off by default (`NL_SQL_PROVIDER=deterministic`; `none` disables generation). When enabled, the provider receives only the role-filtered catalog and the question; identifier-like strings (SSN, email, phone patterns) are scrubbed from the question before it is sent and audited as kinds only. No rows or values are ever sent. Provider failures return `503 provider_unavailable`, and manual SQL keeps working. | Scenario K (role-filtered catalog, provider unavailable → 503 with manual SQL still working) |
+| T19 | Policy tampering or silent widening | Policies are versioned append-only with before/after; every change is audited with whether it narrowed or widened access. Widening needs `policy:grant` (admin); stewards are refused and the refusal is audited. Optimistic version checks prevent lost updates. Results computed under an older policy are flagged (`stale_policy`) and never persisted. | Scenario M; unit tests (policy); mutations `steward-may-widen`, `sensitivity-does-not-mask` |
 
 ## Treatment of derived data on deletion
 
@@ -55,6 +68,18 @@
 | Backups | **Not handled by the platform.** Erased data persists in backups until they expire; backup retention must be set accordingly. |
 
 ## Known gaps (not implemented)
+
+Query workspace and field policy:
+
+- **Query roles can read `pg_catalog`** (PostgreSQL grants it to `PUBLIC`). The validator rejects every catalog-qualified name, and the catalog reveals structure rather than values, but a validator bypass would let a query role read the names of other tenants' schemas and roles. Revoking `PUBLIC` catalog access is not practical in PostgreSQL; a separate database per tenant would be.
+- **No small-cell suppression or differential-privacy noise.** Aggregates over fields a role may see in full are returned exactly, so carefully chosen filters over *unrestricted* fields can narrow a group to one person. Restricted fields cannot be aggregated, grouped or compared.
+- **Filter-level access discloses presence and key equality** by design (`IS NULL`, related-key joins), as documented in [query-workspace.md](query-workspace.md).
+- **Concurrency limits are per API process** (in memory). With several API replicas the effective limit is multiplied; a shared limiter (advisory locks or a counter table) would be needed.
+- **The model provider sees catalog metadata** (names, descriptions, access levels) for the asking role. Column descriptions written into contracts are therefore disclosed to the provider when it is enabled.
+- **Question text and SQL are stored** in `core.query_proposals` and may contain literals the user typed (for example a member id). They are subject to tenant RLS and to `query:history` permissions, but not to field-level redaction or subject erasure.
+- **The deterministic provider understands a fixed set of intents**; anything else returns "cannot answer" and needs the external provider or hand-written SQL.
+
+Platform:
 
 - **The database cannot protect the audit trail from its own owner.** A table owner or superuser can disable triggers. Production should run the service as a non-owner role and ship audit events to external write-once storage.
 - **Extract filter values are stored verbatim** in `export_log.params` and `extract.run` audit details, so a filter on a subject's id survives that subject's erasure.

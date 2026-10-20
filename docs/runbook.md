@@ -11,9 +11,9 @@ API=http://localhost:8080; T=cl_dev_northwind_operator; H="Authorization: Bearer
 | Question | Where |
 |---|---|
 | Is the API up / ready? | `curl $API/healthz` (process), `curl $API/readyz` (database + migrations; 503 with the failing check otherwise) |
-| Is anything stuck? | Dashboard → Overview → "Ran versus trusted" and queue line; `/metrics`: `clearline_backlog_batches`, `clearline_oldest_queued_seconds`, `clearline_workers_live` |
-| Is data stale? | Dashboard → Freshness by source; `clearline_data_freshness_seconds` |
-| What happened to batch X? | Dashboard → batch detail, or `curl -H "$H" $API/api/v1/tenants/northwind/batches/X` (attempts, failure, reconciliation, quality) |
+| Is anything stuck? | Native client → Overview → "Ran versus trusted" and queue line; `/metrics`: `clearline_backlog_batches`, `clearline_oldest_queued_seconds`, `clearline_workers_live` |
+| Is data stale? | Native client → Overview → Freshness by source; `clearline_data_freshness_seconds` |
+| What happened to batch X? | Native client → batch detail, or `curl -H "$H" $API/api/v1/tenants/northwind/batches/X` (attempts, failure, reconciliation, quality) |
 | Logs for one request or run | All logs are JSON lines carrying `correlation_id`, `batch_id`, `attempt`, `worker_id`: `docker compose logs api worker \| grep <id>` |
 
 Suggested alerts: `clearline_workers_live == 0` for 2 min; `clearline_oldest_queued_seconds > 600`; any `clearline_batches{status="failed"}` increase; `clearline_batches{trust="untrusted"}` increase; freshness above the contract limit; `/readyz` non-200.
@@ -24,7 +24,7 @@ Suggested alerts: `clearline_workers_live == 0` for 2 min; `clearline_oldest_que
 
 1. Read `failure` and `attempts[].error` on the batch detail. Search logs by `batch_id`.
 2. Fix the cause: database capacity, timeouts (`BATCH_TIMEOUT_MS`, `STATEMENT_TIMEOUT_MS`), or a defect.
-3. Replay: dashboard "Replay batch", or `curl -X POST -H "$H" $API/api/v1/tenants/northwind/batches/X/replay`. Replay re-queues the same staged rows. It is safe because failed attempts left no effects. *(Tested: integration test "a failed batch … replays safely".)*
+3. Replay: native client "Replay batch", or `curl -X POST -H "$H" $API/api/v1/tenants/northwind/batches/X/replay`. Replay re-queues the same staged rows. It is safe because failed attempts left no effects. *(Tested: integration test "a failed batch … replays safely".)*
 
 ## Failure: worker crashed or host died mid-batch
 
