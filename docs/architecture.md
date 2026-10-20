@@ -32,7 +32,9 @@ flowchart LR
     QUAL[Quality rules<br/>structural / business / referential / privacy]
     KEYS[Keys, duplicates,<br/>corrections, late data]
     RECON[Reconciliation<br/>batch + dataset + re-verify]
+    SCHED[Scheduler<br/>occurrences, run leases,<br/>analyses, deliveries]
   end
+  DEST[Destinations<br/>in-app, SMTP relay,<br/>HTTPS webhooks, exports]
 
   subgraph PG["PostgreSQL"]
     CORE[(core: batches, raw_records,<br/>quarantine, quality, reconciliation,<br/>contracts, audit, export_log)]
@@ -60,6 +62,10 @@ flowchart LR
   POL --> SERVE
   POL --> QRY
   POL -->|grants, views| QV
+  AUTH -->|saved queries, schedules,<br/>runs, destinations| CORE
+  SCHED -->|claim runs + deliveries| CORE
+  SCHED -->|same execution path as QRY:<br/>re-validate, query role| QV
+  SCHED -->|re-authorized, signed| DEST
   DASH -->|HTTPS + token| AUTH
   BI --> VIEWS
   VIEWS -.-> CORE
@@ -76,6 +82,8 @@ Plain-text version:
  API [reports, extracts, lineage] ◀── core + t_<tenant>          native client ──▶ API          BI login ──▶ reporting views (RLS)
  API [query workspace] ──question + permitted catalog──▶ provider ──untrusted SQL──▶ validator ──▶ q_<tenant> views
                        (clearline_query login → SET ROLE clearline_q_<tenant>_<role>, READ ONLY, timeout, row cap)
+ worker [scheduler]: due schedule ──occurrence (unique)──▶ run ──identity check → re-validate → same query path → snapshot
+                     → analyses (deterministic) → insights ──▶ deliveries (re-authorized each) ──▶ in-app | email | webhook | export
 ```
 
 ## Modules and dependency direction
@@ -93,11 +101,14 @@ Dependencies point downward only. Nothing below `api/` imports from `api/`, and 
 | | `src/control` | Tokens and roles, tenants, audit, retention and erasure |
 | | `src/policy` | Field access and sensitivity (`PolicySet`, `FieldViewer`), masking, change classification and versioning |
 | | `src/query` | Permitted catalog, provider interface, SQL validator and rewrite, database query surface (views, roles, grants), execution and history |
+| | `src/analytics` | Saved queries and versions, parameters, recurrence (RRULE + time zone), schedules, execution identity, the scheduler and run lifecycle. Executes through `src/query` (`runSql`), never around it |
+| | `src/delivery` | Destinations, re-authorization before sending, in-app inbox, email (SMTP), signed webhooks with the SSRF guard, exports, retries |
+| Domain (pure) | `src/analysis` | Feature preparation, anomaly, forecast, outlier and clustering algorithms, result contracts, templated insights; the optional narrator is behind a grounding check. No I/O, no authorization |
 | Domain (pure) | `src/transform`, `src/quality` | Whitelisted transforms, type coercion, exact decimal math, rule evaluation, sensitive-data detection. No I/O. |
 | Infrastructure | `src/platform` | Config, database access (tenant and system scopes), migrations, structured logging, metrics |
 | Client | `native/` (Rust) | GPUI desktop application and a UI-free typed API client. Renders API responses; computes nothing beyond display formatting. |
 
-**Business logic is not duplicated.** The trusted-dataset definition, condition and aggregation compilation, and the orphan predicate live in `src/reporting/sql.ts`, used by metrics, extracts, lineage and dataset checks. The generated `rpt_trusted_*` views express the same rule in DDL for BI users, and Scenario J checks that they agree. Row-level validation lives only in `src/transform`. Trust status is set only by the processor and re-verification, and the overall verdict by the operations report. Field visibility is decided only by `src/policy` (one resolver for queries, records, lineage, extracts, exceptions, contract views and BI views). The native client renders API values and only formats them; it asks the server what a role may do instead of re-implementing it.
+**Business logic is not duplicated.** The trusted-dataset definition, condition and aggregation compilation, and the orphan predicate live in `src/reporting/sql.ts`, used by metrics, extracts, lineage and dataset checks. The generated `rpt_trusted_*` views express the same rule in DDL for BI users, and Scenario J checks that they agree. Row-level validation lives only in `src/transform`. Trust status is set only by the processor and re-verification, and the overall verdict by the operations report. Saved analytics adds no second authority: a run executes through the query workspace's `runSql` (validator, policy, query role), and deliveries re-use the same validator before sending ([saved-analytics.md](saved-analytics.md)). Field visibility is decided only by `src/policy` (one resolver for queries, records, lineage, extracts, exceptions, contract views and BI views). The native client renders API values and only formats them; it asks the server what a role may do instead of re-implementing it.
 
 ## The batch lifecycle
 

@@ -103,6 +103,32 @@ Run per tenant on a schedule: `docker compose exec api node dist/src/cli.js rete
 
 `POST /api/v1/tenants/:tenant/subjects/:entity/:key/erase` (admin). The response lists prior exports that contained the subject; follow up with their recipients. Dependent records (e.g. that member's claims) are retained and become orphaned references; erase them separately if required.
 
+## Saved analytics
+
+Schedules run in the **worker** (`SCHEDULER_ENABLED=true`, the default); the desktop client plays no part. Details: [saved-analytics.md](saved-analytics.md).
+
+```sh
+A=cl_dev_northwind_admin; HA="Authorization: Bearer $A"
+curl -H "$HA" "$API/api/v1/tenants/northwind/analytics/runs?status=failed&limit=20"     # recent failures
+curl -H "$HA" "$API/api/v1/tenants/northwind/analytics/runs/<run_id>"                   # phases, timings, deliveries, attempts
+curl -H "$HA" "$API/api/v1/tenants/northwind/audit?correlation_id=<run_id>"             # every event of that run
+```
+
+Suggested alerts: `clearline_analytics_oldest_due_seconds > 300` (scheduler not keeping up or not running); `clearline_schedules_needing_attention > 0`; `clearline_deliveries{status="failed"}` or `{status="blocked"}` increasing; `clearline_analytics_runs_total{status="failed"}` rate.
+
+| Symptom | Meaning | Action |
+|---|---|---|
+| Runs stay `queued`, oldest-due grows | No scheduler is running, or it is saturated (`SCHEDULER_MAX_CONCURRENT`, `SCHEDULER_MAX_PER_TENANT`) | Check `docker compose ps worker` and worker logs for `scheduler started`; raise limits only with database headroom |
+| Run `denied`, `identity_revoked` / `role_not_delegable`; schedule shows attention | The execution identity lost its token or may no longer delegate the role | Someone with `schedule:manage` edits the schedule (re-binding it to their identity) or cancels it. Do not reissue a token just to revive a schedule |
+| Run `failed`, `failure_class=validation` or `authorization` | The SQL is no longer permitted for the run role (policy tightened, field hidden) | Intended. Review with the query owner; save a new version that complies |
+| Run `failed`, `failure_class=delivery`, `delivery_status=partial/failed` | The query and analyses succeeded; one or more destinations did not | Inspect the delivery's `last_error_code`; fix the destination (URL, secret `WEBHOOK_SECRET_<REF>`, SMTP); then `POST …/runs/<id>/retry-deliveries` (no re-query) |
+| Delivery `blocked`, `access_changed` | Redaction or permissions changed after the query ran | Intended: nothing was sent. Rerun the query if the new policy should apply (`POST …/runs/<id>/rerun`) |
+| Delivery `result_expired` | The snapshot passed `RUN_RESULT_RETENTION_HOURS` | Rerun the query |
+| Analysis `stale_schema` / `needs_revalidation` | The query's output changed type or columns | Open the saved query → Analyses; revalidate and save a new version |
+| Worker crashed mid-run | Leases expire (`RUN_LEASE_SECONDS`, `DELIVERY_LEASE_SECONDS`), then the next tick re-queues (audited `run.recover`, `delivery.recover`) | Nothing to do; check `missed_occurrences` on the next run if the outage spanned scheduled times (only the latest occurrence runs) |
+
+Email: `EMAIL_PROVIDER=none` (default) makes email deliveries fail permanently with `email_not_configured`; configure `smtp` with `SMTP_URL` (STARTTLS or `smtps://`) and `EMAIL_FROM`. Webhooks to private addresses are refused unless `WEBHOOK_ALLOW_PRIVATE=true`, which is rejected at startup in production.
+
 ## Reset a local environment
 
 `docker compose down -v && docker compose up -d && docker compose run --rm demo`. This deletes all data, including the volume.

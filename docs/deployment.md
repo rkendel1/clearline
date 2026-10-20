@@ -53,13 +53,34 @@ All settings are environment variables, validated at startup (`src/platform/conf
 | `QUERY_MAX_RESULT_BYTES` | `8388608` | Serialized result cap (whole rows; `truncated: true`) |
 | `QUERY_MAX_COST` | `5000000` | Planner cost above which execution is refused before it starts |
 | `QUERY_MAX_CONCURRENT_PER_TENANT`, `QUERY_MAX_CONCURRENT` | `2`, `4` | Concurrent executions per API process; excess requests get `429` |
+| **Saved analytics** ([saved-analytics.md](saved-analytics.md)) | | |
+| `SCHEDULER_ENABLED` | `true` | Run the scheduler in the worker process (the API runs it only with `RUN_WORKER_IN_API=true`) |
+| `SCHEDULER_TICK_MS` | `1000` | Scheduler polling interval |
+| `SCHEDULER_MAX_CONCURRENT`, `SCHEDULER_MAX_PER_TENANT` | `2`, `2` | Runs executing at once per process / per tenant across all workers |
+| `RUN_LEASE_SECONDS` | `300` | Run lease; an expired lease is recovered by the next tick |
+| `RUN_RETRY_BASE_MS`, `RUN_RETRY_MAX_MS` | `30000`, `3600000` | Exponential backoff for transient query failures (attempts per schedule: `max_attempts`, default 3) |
+| `RUN_RESULT_RETENTION_HOURS` | `168` | Lifetime of a run's bounded result snapshot |
+| `ANALYSIS_MAX_ROWS`, `ANALYSIS_MAX_POINTS`, `ANALYSIS_MAX_FEATURES`, `ANALYSIS_MAX_HORIZON` | `5000`, `5000`, `20`, `104` | Input and output caps for analyses |
+| `ANALYSIS_TIMEOUT_MS`, `ANALYSIS_MAX_MEMORY_MB` | `10000`, `256` | Analysis time limit and up-front memory estimate limit |
+| `ANALYSIS_NARRATOR`, `ANALYSIS_NARRATOR_MODEL` | `none`, as `NL_SQL_MODEL` | `anthropic` enables optional model-written insight summaries (evidence only, grounding-checked); uses `ANTHROPIC_API_KEY` |
+| `DELIVERY_CONCURRENCY`, `DELIVERY_TIMEOUT_MS`, `DELIVERY_LEASE_SECONDS` | `4`, `10000`, `120` | Delivery workers per tick, per-attempt timeout, lease |
+| `DELIVERY_RETRY_BASE_MS`, `DELIVERY_RETRY_MAX_MS` | `30000`, `3600000` | Exponential backoff for transient delivery failures (per destination `max_attempts`, default 5) |
+| `DELIVERY_MAX_ROWS`, `DELIVERY_MAX_BYTES` | `100`, `1048576` | Rows and bytes a webhook payload or email attachment may carry |
+| `EXPORT_EXPIRY_HOURS` | `72` | Lifetime of a CSV export |
+| `EMAIL_PROVIDER` | `none` | `none`, `smtp`, `file` (writes `.eml` to `EMAIL_OUTBOX_DIR`; local demos), `test` |
+| `SMTP_URL` | unset | **Secret** (may carry credentials). `smtp://user:pass@host:587` (STARTTLS required), `smtps://…:465`; `?tls=none` refused in production |
+| `EMAIL_FROM`, `EMAIL_ALLOWED_DOMAINS` | `clearline@localhost`, unset | Sender; optional allow-list of recipient domains |
+| `EMAIL_OUTBOX_DIR` | `var/outbox` | Directory for the `file` provider |
+| `WEBHOOK_SECRET_<REF>`, `WEBHOOK_AUTH_<REF>` | unset | **Secrets.** Signing secret and optional `Authorization` header value for destinations whose `secret_ref` / `auth_ref` is `<REF>` |
+| `WEBHOOK_ALLOW_PRIVATE` | `false` | Allow private/loopback webhook targets and `http://` (local testing only; startup fails if set in production) |
+| `PUBLIC_URL` | `http://localhost:8080` | Base for links in notifications, emails and webhook payloads |
 
 Compose sets explicit CPU and memory limits per service (`deploy.resources.limits`) and a 30-second stop grace period.
 
 ## Secrets management
 
 - The repository contains **only** local demo credentials: Compose's `clearline-local-only` password and the seeded `cl_dev_*` tokens. They are listed in `.gitleaks.toml` so the CI secret scan still fails on anything else.
-- In any shared environment, inject `DATABASE_URL`, `QUERY_DATABASE_URL` (or `QUERY_DB_PASSWORD`), `ANTHROPIC_API_KEY` and `METRICS_TOKEN` from the platform's secret store (AWS Secrets Manager / SSM, GCP Secret Manager, Azure Key Vault, Kubernetes Secrets with external-secrets, or Vault) as environment variables at runtime. Never bake them into images or Compose files.
+- In any shared environment, inject `DATABASE_URL`, `QUERY_DATABASE_URL` (or `QUERY_DB_PASSWORD`), `ANTHROPIC_API_KEY`, `METRICS_TOKEN`, `SMTP_URL` and every `WEBHOOK_SECRET_*` / `WEBHOOK_AUTH_*` from the platform's secret store (AWS Secrets Manager / SSM, GCP Secret Manager, Azure Key Vault, Kubernetes Secrets with external-secrets, or Vault) as environment variables at runtime. Never bake them into images or Compose files.
 - API tokens are generated server-side (`cl_` + 192 random bits), returned **once**, stored as SHA-256, and revocable (`POST /api/v1/tenants/:tenant/tokens/:name/revoke`). Bootstrap order: the platform-admin token (created out of band; the seed script shows how) creates the tenant and issues its **first admin** token and its **approver** tokens; the tenant admin issues steward, operator and reporter tokens. After that the platform admin cannot issue further tenant tokens or revoke admins. If a tenant loses every admin, the platform admin can bootstrap a new one (audited).
 - Rotate database credentials by adding the new role/password, rolling the services, then removing the old one. Rotate tokens by issuing a new one under a new name, switching clients, and revoking the old one.
 

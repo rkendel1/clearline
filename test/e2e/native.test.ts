@@ -240,7 +240,9 @@ test('Native client integration: the Rust API client decodes every endpoint for 
   const out = r.out;
   assert.equal(r.status, 0, out.slice(-4000));
   assert.match(out, /every_role_decodes_what_it_may_see_and_is_refused_the_rest \.\.\. ok/);
-  evidence('Native client integration (Rust)', ['clearline-client contract test against the live backend: 4 data roles x 16 endpoints decode or are refused (403) exactly per the server permissions; query lifecycle with client-chosen execution id; steward tighten/widen; approver, platform admin and cross-tenant tokens refused']);
+  assert.match(out, /analytics_endpoints_decode_for_every_role_and_respect_permissions \.\.\. ok/);
+  evidence('Native client integration (Rust)', ['clearline-client contract test against the live backend: 4 data roles x 16 endpoints decode or are refused (403) exactly per the server permissions; query lifecycle with client-chosen execution id; steward tighten/widen; approver, platform admin and cross-tenant tokens refused',
+    'analytics contract: 4 roles save a proposal, version it with a typed parameter, preview-execute with a bound value, validate an analysis, duplicate, favorite; list destinations (create only with delivery:manage); preview, create, run-now and pause schedules (weekly Berlin, monthly last-day); decode run detail, run list and notifications; a reporter cannot delegate to admin; approver and cross-tenant refused']);
 });
 
 test('Native client measurements: startup, large result, scrolling, typing during a running query', async () => {
@@ -274,4 +276,126 @@ test('Native client measurements: startup, large result, scrolling, typing durin
     `typing while a query runs: p50 ${typing.frames.p50_ms} ms, p95 ${typing.frames.p95_ms} ms per frame (idle: p50 ${idleTyping.frames.p50_ms} ms)`,
   ]);
   await app.cmd({ cmd: 'sign_out' });
+});
+
+// Scenario U runs last: it loads the analytics dataset, which would change the totals the
+// earlier scenarios check against ground truth.
+test('Scenario U: native saved analytics — save from the workspace, version, analyse, schedule, run, insights, notifications, delivery', async () => {
+  const lines: string[] = [];
+  const { loadAnalyticsDataset, ANOMALY_DATE } = await import('../../synthetic/analytics-dataset.js');
+  const { Scheduler } = await import('../../src/analytics/scheduler.js');
+  await loadAnalyticsDataset(client(ctx, DEV_TOKENS.northwind.operator));
+  await ctx.worker.drain();
+  const sched = new Scheduler({ workerId: 'native-e2e' });
+
+  // 1. Administrator: delivery destinations, a test delivery, and a webhook to a private address refused.
+  let s = await app.cmd({ cmd: 'sign_in', token: DEV_TOKENS.northwind.admin });
+  await app.cmd({ cmd: 'nav', view: 'destinations' });
+  await app.cmd({ cmd: 'destinations.set', kind: 'in_app', name: 'Native inbox', target: '$owner', notify_on: 'anomaly' });
+  s = await app.cmd({ cmd: 'destinations.create' });
+  assert.match(view(s).notice, /Destination "Native inbox" created/);
+  s = await app.cmd({ cmd: 'destinations.test', name: 'Native inbox' });
+  assert.equal(view(s).last_test.ok, true, JSON.stringify(view(s).last_test));
+  await app.cmd({ cmd: 'destinations.set', kind: 'webhook', name: 'Internal hook', target: 'https://10.1.2.3/hook', secret_ref: 'OPS' });
+  s = await app.cmd({ cmd: 'destinations.create' });
+  assert.ok(view(s).error, 'a webhook to a private address is refused');
+  assert.match(view(s).error.message, /private|not allowed|blocked/i);
+  assert.ok(view(s).items.some((d: any) => d.name === 'Native inbox') && !view(s).items.some((d: any) => d.name === 'Internal hook'));
+  app.screenshot('15-destinations-admin');
+  lines.push(`admin: in-app destination created and test-delivered; webhook to https://10.1.2.3 refused (${view(s).error.code})`);
+  await app.cmd({ cmd: 'sign_out' });
+
+  // 2. Reporter: natural-language request -> validated proposal -> saved query (version 1).
+  s = await app.cmd({ cmd: 'sign_in', token: DEV_TOKENS.northwind.reporter });
+  await app.cmd({ cmd: 'nav', view: 'query' });
+  s = await app.cmd({ cmd: 'query.ask', text: 'Daily paid claim amounts, claim counts and average payment for the last 180 days.' });
+  assert.equal(view(s).proposal.ok, true);
+  s = await app.cmd({ cmd: 'query.save', name: 'Daily paid claims (native)' });
+  assert.equal(s.route, 'library', 'saving opens the new query in the library');
+  const qid = view(s).selected;
+  assert.ok(qid, 'saved and selected');
+  s = await app.cmd({ cmd: 'library.select', query: qid });
+  let d = view(s).detail;
+  assert.equal(d.version, 1);
+  assert.deepEqual(d.output_schema.map((c: any) => `${c.name}:${c.type}`), ['day:date', 'paid:decimal', 'claims:integer', 'avg_paid:decimal']);
+  const [row] = await sql(`SELECT question, source_proposal_id FROM core.saved_query_versions WHERE query_id = $1 AND version = 1`, [qid]);
+  assert.match(row.question, /Daily paid claim amounts/);
+  assert.ok(row.source_proposal_id, 'version 1 records the proposal it came from');
+
+  // 3. Version 2 in the SQL tab: a typed date window bound as parameters (reproducible on any date).
+  await app.cmd({ cmd: 'library.tab', tab: 'sql' });
+  await app.cmd({ cmd: 'library.edit_version', sql: d.sql.replace('c.service_date >= current_date - 180', 'c.service_date >= :start AND c.service_date <= :end'),
+    parameters: JSON.stringify([{ name: 'start', type: 'date', label: 'From', default: '2026-04-04' }, { name: 'end', type: 'date', label: 'To', default: '2026-09-30' }]), note: 'Typed date window' });
+  s = await app.cmd({ cmd: 'library.save_version' });
+  d = view(s).detail;
+  assert.equal(d.version, 2, view(s).notice ?? JSON.stringify(view(s).error));
+  assert.deepEqual(d.parameters, ['start', 'end']);
+  app.screenshot('16-library-sql-versions-reporter');
+
+  // 4. Analysis builder: anomaly detection on daily paid amounts, validated, saved as version 3.
+  await app.cmd({ cmd: 'library.tab', tab: 'analyses' });
+  await app.cmd({ cmd: 'analysis.set', type: 'anomaly', algorithm: 'anomaly.rolling_mad', time_column: 'day', columns: ['paid'], params: { key: 'daily-paid', label: 'Daily paid anomalies', period: '7' } });
+  s = await app.cmd({ cmd: 'analysis.validate' });
+  assert.equal(view(s).analysis_builder.check.ok, true, JSON.stringify(view(s).analysis_builder.check));
+  s = await app.cmd({ cmd: 'analysis.add' });
+  assert.match(view(s).analysis_builder.notice, /Saved as version 3/);
+  s = await app.cmd({ cmd: 'library.select', query: qid });
+  assert.equal(view(s).detail.analyses[0].algorithm, 'anomaly.rolling_mad');
+  app.screenshot('17-analysis-builder-reporter');
+
+  // 5. Schedule editor: daily 06:00 New York, previewed across the DST change, delivered to the inbox.
+  await app.cmd({ cmd: 'library.tab', tab: 'schedules' });
+  await app.cmd({ cmd: 'schedule.set', frequency: 'daily', at: '06:00', timezone: 'America/New_York', start_local: '2026-10-31T06:00', name: 'Daily 06:00 New York', run_as_role: 'reporter', destinations: ['Native inbox'] });
+  s = await app.cmd({ cmd: 'schedule.preview' });
+  const pv = view(s).schedule_editor.preview;
+  assert.deepEqual(pv.next.slice(0, 3), ['2026-10-31T10:00:00.000Z', '2026-11-01T11:00:00.000Z', '2026-11-02T11:00:00.000Z'], 'EDT then EST');
+  s = await app.cmd({ cmd: 'schedule.create' });
+  assert.equal(view(s).schedule_editor.error, null);
+  const schedules = view(s).detail.schedules;
+  assert.equal(schedules.length, 1);
+  assert.equal(schedules[0].rrule, 'FREQ=DAILY;BYHOUR=6;BYMINUTE=0');
+  app.screenshot('18-schedule-editor-reporter');
+
+  // 6. Run now (queued for the worker; the scheduler runs it), then the run view: phases, insights, charts.
+  s = await app.cmd({ cmd: 'library.schedule_action', schedule: schedules[0].id, action: 'run' });
+  const runId = view(s).last_queued;
+  assert.ok(runId);
+  await sched.drain();
+  s = await app.cmd({ cmd: 'nav', view: 'run', arg: runId });
+  const r = view(s).detail;
+  assert.deepEqual([r.status, r.query_status, r.analysis_status, r.delivery_status], ['succeeded', 'succeeded', 'succeeded', 'delivered']);
+  assert.deepEqual(r.run_as, { actor: 'northwind-reporter', role: 'reporter' });
+  // The planted day is flagged high (the reference dataset's own claims can add other findings).
+  const top = r.insights.find((i: any) => i.title.startsWith(`paid for ${ANOMALY_DATE} is above its expected range`));
+  assert.ok(top, r.insights.map((i: any) => i.title).join('\n'));
+  assert.equal(top.severity, 'high');
+  const [indep] = await sql(`SELECT sum(c.paid_amount)::text AS paid FROM t_northwind.claim c JOIN core.batches b ON b.id = c."_batch_id" WHERE c."_is_current" AND b.trust_status = 'trusted' AND c.service_date = $1`, [ANOMALY_DATE]);
+  assert.ok(top.body.includes(Number(indep.paid).toLocaleString('en-US', { minimumFractionDigits: 2 })), `insight quotes the observed value ${indep.paid}: ${top.body}`);
+  assert.ok(r.analyses[0].charts >= 1, 'the anomaly analysis has a chart');
+  app.screenshot('19-run-insights-reporter');
+  await app.cmd({ cmd: 'run.scroll', y: 760 });
+  app.screenshot('20-run-chart-reporter');
+  lines.push(`reporter: NL request saved (v1, with its proposal), v2 typed :start/:end window, v3 anomaly analysis; schedule daily 06:00 America/New_York (preview 10:00Z then 11:00Z across DST); run ${runId.slice(0, 8)}: succeeded / delivered; insight "${top.title}" (high) quotes ${indep.paid} = independent SQL`);
+
+  // 7. Notifications: the anomaly notification opens the run; run history lists it.
+  s = await app.cmd({ cmd: 'nav', view: 'notifications' });
+  const n = view(s).items.find((x: any) => x.run_id === runId);
+  assert.ok(n, 'notification delivered to the owner');
+  assert.equal(n.kind, 'anomaly');
+  app.screenshot('21-notifications-reporter');
+  s = await app.cmd({ cmd: 'notifications.open', index: view(s).items.indexOf(n) });
+  assert.equal(s.route, 'run');
+  assert.equal(view(s).id, runId);
+  s = await app.cmd({ cmd: 'nav', view: 'runs' });
+  assert.equal(view(s).items.find((x: any) => x.id === runId).status, 'succeeded');
+  app.screenshot('22-run-history-reporter');
+  lines.push('reporter: the anomaly notification is in the inbox and opens the run; run history shows it with query, analysis and delivery outcomes');
+  await app.cmd({ cmd: 'sign_out' });
+
+  // 8. Another reporter-role identity cannot see the private query; the operator's library is empty of it.
+  s = await app.cmd({ cmd: 'sign_in', token: DEV_TOKENS.northwind.operator });
+  s = await app.cmd({ cmd: 'nav', view: 'library' });
+  assert.ok(!view(s).items.some((i: any) => i.id === qid), 'private saved queries are not listed for others');
+  await app.cmd({ cmd: 'sign_out' });
+  evidence('Scenario U — Native saved analytics workflow', lines);
 });
