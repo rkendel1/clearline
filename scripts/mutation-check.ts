@@ -27,7 +27,7 @@ const MUTATIONS: Mutation[] = [
     file: 'src/ingestion/intake.ts', find: 'if (existing.rows[0]) {', replace: 'if (false && existing.rows[0]) {',
     tests: ['test/scenarios/c-duplicate-delivery.test.ts'] },
   { id: 'redaction-removed', protects: 'sensitive fields are redacted in default extracts',
-    file: 'src/reporting/extracts.ts', find: '(sensitive.has(h) && !req.include_sensitive ? REDACTED : fmt(r[h]))', replace: 'fmt(r[h])',
+    file: 'src/reporting/extracts.ts', find: "const redacted = new Set(fields.filter((f) => level.get(f) === 'masked' || (sensitive.has(f) && !req.include_sensitive)));", replace: 'const redacted = new Set<string>();',
     tests: ['test/scenarios/a-normal-ingestion.test.ts', 'test/scenarios/g-privacy-violation.test.ts'] },
   { id: 'control-count-ignored', protects: 'source control counts are reconciled',
     file: 'src/reconciliation/batch.ts', find: "status: diff === 0 ? 'passed' : 'failed',", replace: "status: 'passed',",
@@ -56,6 +56,31 @@ const MUTATIONS: Mutation[] = [
   { id: 'audit-floor-removed', protects: 'young audit events cannot be deleted even in a retention session',
     file: 'db/migrations/0002_review_hardening.sql', find: 'IF OLD.at < now() - make_interval(days => coalesce(keep_days, 2555)) THEN', replace: 'IF true THEN',
     tests: ['test/integration/api.test.ts'] },
+  // ---- query workspace and field policy (scenarios K-N)
+  { id: 'validator-restricted-check-removed', protects: 'restricted fields cannot be compared, sorted, grouped, aggregated or derived',
+    file: 'src/query/validate.ts', find: "    throw new Reject('restricted_field', `Field ${fq(b)} cannot be used in ${where}:", replace: "    return; throw new Reject('restricted_field', `Field ${fq(b)} cannot be used in ${where}:",
+    tests: ['test/unit/query-validate.test.ts', 'test/scenarios/n-tenant-isolation-inference.test.ts'] },
+  { id: 'mask-rewrite-skipped', protects: 'masked fields are returned only in the redacted form computed by the database',
+    file: 'src/query/validate.ts', find: "        rt.val = { FuncCall: { funcname: [{ String: { sval: 'core' } }, { String: { sval: 'mask_value' } }],", replace: "        if (Date.now() < 0) rt.val = { FuncCall: { funcname: [{ String: { sval: 'core' } }, { String: { sval: 'mask_value' } }],",
+    tests: ['test/scenarios/l-role-restricted-field.test.ts', 'test/scenarios/m-sensitivity-redaction.test.ts'] },
+  { id: 'hidden-columns-granted', protects: 'the database grants a query role no column its role may not use',
+    file: 'src/query/surface.ts', find: ".filter((c) => c.level !== 'hidden' && c.level !== 'discover')", replace: '.filter(() => true)',
+    tests: ['test/scenarios/l-role-restricted-field.test.ts'] },
+  { id: 'steward-may-widen', protects: 'policy:manage may only tighten a field policy',
+    file: 'src/policy/fields.ts', find: "if ((change.kind === 'loosen' || change.kind === 'mixed') && !can(p, 'policy:grant')) {", replace: 'if (false) {',
+    tests: ['test/scenarios/m-sensitivity-redaction.test.ts'] },
+  { id: 'sensitivity-does-not-mask', protects: 'a sensitive field is redacted for roles outside its unmask list',
+    file: 'src/policy/fields.ts', find: "if (base === 'full' && p.sensitive && !p.unmask_roles.includes(role)) return 'masked';", replace: '',
+    tests: ['test/unit/policy.test.ts', 'test/scenarios/m-sensitivity-redaction.test.ts'] },
+  { id: 'history-not-withheld', protects: 'query history does not show other users\' SQL that the viewer may not use',
+    file: 'src/query/service.ts', find: 'withheld = !own && !v.ok && ACCESS_CODES.has(v.issues[0]?.code);', replace: 'withheld = false;',
+    tests: ['test/scenarios/n-tenant-isolation-inference.test.ts'] },
+  { id: 'execute-without-revalidation', protects: 'every execution re-validates the stored SQL under the current policy',
+    file: 'src/query/service.ts', find: "    throw new AppError(403, 'query_not_permitted', v.issues[0]?.message ?? 'The query is not permitted.', { issues: v.issues });", replace: '',
+    tests: ['test/scenarios/k-natural-language-sql.test.ts'] },
+  { id: 'records-unredacted', protects: 'record listings apply the field policy',
+    file: 'src/reporting/lineage.ts', find: 'records: rows.map((r) => ({ ...viewer.record(entity, r), _key: viewer.key(entity, e.key, r._key) })) };', replace: 'records: rows };',
+    tests: ['test/scenarios/m-sensitivity-redaction.test.ts', 'test/scenarios/g-privacy-violation.test.ts'] },
 ];
 
 const only = process.argv[2];
@@ -63,7 +88,7 @@ const results: Record<string, unknown>[] = [];
 let survived = 0;
 for (const m of MUTATIONS.filter((x) => !only || x.id === only)) {
   const dir = mkdtempSync(path.join(tmpdir(), `clearline-mut-${m.id}-`));
-  cpSync(ROOT, dir, { recursive: true, filter: (src) => !/[\\/](node_modules|\.git|dist|test-results)([\\/]|$)/.test(src.slice(ROOT.length)) });
+  cpSync(ROOT, dir, { recursive: true, filter: (src) => !/[\\/](node_modules|\.git|dist|test-results|target)([\\/]|$)/.test(src.slice(ROOT.length)) });
   symlinkSync(path.join(ROOT, 'node_modules'), path.join(dir, 'node_modules'));
   const f = path.join(dir, m.file);
   const src = readFileSync(f, 'utf8');

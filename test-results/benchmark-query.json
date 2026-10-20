@@ -1,0 +1,179 @@
+{
+  "generated_at": "2026-10-20T00:22:38.959Z",
+  "environment": {
+    "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+    "cpu_count": 4,
+    "memory_gb": 16.9,
+    "os": "linux 6.18.44-fc-v139",
+    "node": "v22.22.0",
+    "postgres": "16.15 (Ubuntu 16.15-0ubuntu0.24.04.1)",
+    "database_location": "same host as the application (loopback)"
+  },
+  "dataset": {
+    "members": 5000,
+    "claims": 100000,
+    "iterations": 100
+  },
+  "configuration": {
+    "QUERY_TIMEOUT_MS": "10000 (default)",
+    "QUERY_MAX_ROWS": "5000 (default)",
+    "QUERY_MAX_CONCURRENT_PER_TENANT": "2 (default)",
+    "provider": "deterministic"
+  },
+  "validate": {
+    "simple": {
+      "n": 100,
+      "p50_ms": 0.16,
+      "p95_ms": 1.31,
+      "max_ms": 4.99,
+      "mean_ms": 0.39
+    },
+    "grouped": {
+      "n": 100,
+      "p50_ms": 0.31,
+      "p95_ms": 1.04,
+      "max_ms": 3.75,
+      "mean_ms": 0.46
+    },
+    "join_subquery": {
+      "n": 100,
+      "p50_ms": 0.22,
+      "p95_ms": 0.34,
+      "max_ms": 2.02,
+      "mean_ms": 0.25
+    },
+    "cte_masked": {
+      "n": 100,
+      "p50_ms": 0.4,
+      "p95_ms": 0.66,
+      "max_ms": 2,
+      "mean_ms": 0.44
+    },
+    "rejected_probe": {
+      "n": 100,
+      "p50_ms": 0.05,
+      "p95_ms": 0.12,
+      "max_ms": 0.42,
+      "mean_ms": 0.06
+    }
+  },
+  "propose": {
+    "nl_question": {
+      "n": 50,
+      "p50_ms": 14.08,
+      "p95_ms": 21.74,
+      "max_ms": 44.16,
+      "mean_ms": 15.32
+    },
+    "sql_grouped": {
+      "n": 50,
+      "p50_ms": 10.83,
+      "p95_ms": 17.32,
+      "max_ms": 24.14,
+      "mean_ms": 11.98
+    },
+    "sql_rejected": {
+      "n": 50,
+      "p50_ms": 9.26,
+      "p95_ms": 14.04,
+      "max_ms": 18.04,
+      "mean_ms": 9.21
+    }
+  },
+  "execute": {
+    "count_100k": {
+      "n": 30,
+      "p50_ms": 36.7,
+      "p95_ms": 48.14,
+      "max_ms": 48.79,
+      "mean_ms": 37.87,
+      "rows": 1,
+      "truncated": false,
+      "response_bytes": 480,
+      "server_duration_ms": 23
+    },
+    "grouped_by_month_status": {
+      "n": 30,
+      "p50_ms": 73.58,
+      "p95_ms": 89.13,
+      "max_ms": 97.61,
+      "mean_ms": 73.41,
+      "rows": 18,
+      "truncated": false,
+      "response_bytes": 1704,
+      "server_duration_ms": 67
+    },
+    "orphans_anti_join": {
+      "n": 30,
+      "p50_ms": 41.69,
+      "p95_ms": 60.84,
+      "max_ms": 68.58,
+      "mean_ms": 43.92,
+      "rows": 0,
+      "truncated": false,
+      "response_bytes": 639,
+      "server_duration_ms": 26
+    },
+    "cte_join_masked_5000": {
+      "n": 30,
+      "p50_ms": 129.71,
+      "p95_ms": 165.45,
+      "max_ms": 177.96,
+      "mean_ms": 131.67,
+      "rows": 5000,
+      "truncated": false,
+      "response_bytes": 187904,
+      "server_duration_ms": 98
+    },
+    "wide_5000_rows": {
+      "n": 30,
+      "p50_ms": 75.92,
+      "p95_ms": 91.9,
+      "max_ms": 106.7,
+      "mean_ms": 77.74,
+      "rows": 5000,
+      "truncated": true,
+      "response_bytes": 376439,
+      "server_duration_ms": 59
+    },
+    "preview_20": {
+      "n": 30,
+      "p50_ms": 53.7,
+      "p95_ms": 64.78,
+      "max_ms": 76.15,
+      "mean_ms": 55.28,
+      "rows": 20,
+      "truncated": true,
+      "response_bytes": 1644,
+      "server_duration_ms": 37
+    }
+  },
+  "concurrent": {
+    "1_parallel": {
+      "wall_ms": 284.2,
+      "ran": 1,
+      "refused_429": 0,
+      "server_ms": [
+        268
+      ]
+    },
+    "2_parallel": {
+      "wall_ms": 384.8,
+      "ran": 2,
+      "refused_429": 0,
+      "server_ms": [
+        261,
+        307
+      ]
+    },
+    "4_parallel": {
+      "wall_ms": 351,
+      "ran": 2,
+      "refused_429": 2,
+      "server_ms": [
+        326,
+        286
+      ]
+    }
+  }
+}

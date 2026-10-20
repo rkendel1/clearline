@@ -1,22 +1,31 @@
 <?xml version="1.0" encoding="utf-8"?>
 <testsuites>
-	<testcase name="Scenario A: valid batch flows from source row to metric and extract" time="0.982644" classname="test"/>
-	<testcase name="Scenario B: two tenants, two canonical models, one codebase" time="0.975610" classname="test"/>
-	<testcase name="Scenario C: duplicate submissions have no duplicate business effects" time="0.840260" classname="test"/>
-	<testcase name="Scenario D: invalid records are quarantined with actionable errors and excluded from metrics" time="0.751177" classname="test"/>
-	<testcase name="Scenario E: corrections supersede, late versions become history, conflicts are quarantined" time="0.832209" classname="test"/>
-	<testcase name="Scenario F1: worker killed mid-transaction recovers safely after restart" time="5.856488" classname="test"/>
-	<testcase name="Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly" time="4.953798" classname="test"/>
-	<testcase name="Scenario G: cross-tenant and sensitive-export attempts are denied and audited" time="0.639458" classname="test"/>
-	<testcase name="Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely" time="2.005411" classname="test"/>
-	<testcase name="Scenario I: discrepancies are detected, explained, and removed from trusted outputs" time="1.339360" classname="test"/>
-	<testcase name="Scenario J: reports, SQL views and extracts agree with independent queries and ground truth" time="1.237915" classname="test"/>
-	<!-- tests 11 -->
+	<testcase name="Scenario A: valid batch flows from source row to metric and extract" time="1.106665" classname="test"/>
+	<testcase name="Scenario B: two tenants, two canonical models, one codebase" time="1.617531" classname="test"/>
+	<testcase name="Scenario C: duplicate submissions have no duplicate business effects" time="1.299507" classname="test"/>
+	<testcase name="Scenario D: invalid records are quarantined with actionable errors and excluded from metrics" time="0.930300" classname="test"/>
+	<testcase name="Scenario E: corrections supersede, late versions become history, conflicts are quarantined" time="1.446790" classname="test"/>
+	<testcase name="Scenario F1: worker killed mid-transaction recovers safely after restart" time="6.234148" classname="test"/>
+	<testcase name="Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly" time="4.336853" classname="test"/>
+	<testcase name="Scenario G: cross-tenant and sensitive-export attempts are denied and audited" time="1.212653" classname="test"/>
+	<testcase name="Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely" time="2.697669" classname="test"/>
+	<testcase name="Scenario I: discrepancies are detected, explained, and removed from trusted outputs" time="1.783719" classname="test"/>
+	<testcase name="Scenario J: reports, SQL views and extracts agree with independent queries and ground truth" time="1.858509" classname="test"/>
+	<testcase name="Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL" time="2.122391" classname="test"/>
+	<testcase name="Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed" time="0.264025" classname="test"/>
+	<testcase name="Scenario L: a restricted field cannot be obtained by a role that may not see it" time="2.189419" classname="test"/>
+	<testcase name="Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail" time="2.956064" classname="test"/>
+	<testcase name="Scenario N1: cross-tenant access through generated and edited SQL is rejected" time="1.826655" classname="test"/>
+	<testcase name="Scenario N2: the database enforces isolation even if the validator were bypassed" time="0.027786" classname="test"/>
+	<testcase name="Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions" time="0.304623" classname="test"/>
+	<testcase name="Scenario N4: error messages, query history and exports disclose nothing" time="0.319052" classname="test"/>
+	<testcase name="Scenario N5: runaway and unsafe queries fail closed (timeout, cancellation, concurrency, limits)" time="3.523456" classname="test"/>
+	<!-- tests 20 -->
 	<!-- suites 0 -->
-	<!-- pass 11 -->
+	<!-- pass 20 -->
 	<!-- fail 0 -->
 	<!-- cancelled 0 -->
 	<!-- skipped 0 -->
 	<!-- todo 0 -->
-	<!-- duration_ms 30376.414677 -->
+	<!-- duration_ms 63028.276174 -->
 </testsuites>

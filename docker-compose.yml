@@ -1,7 +1,7 @@
 # Local, reproducible Clearline stack (synthetic data only).
 #   docker compose up -d                 # postgres, migrations, demo seed, api, worker
 #   docker compose run --rm demo         # load the reference dataset and print results
-#   open http://localhost:8080           # dashboard (tokens in README)
+#   native/target/release/clearline --url http://localhost:8080   # desktop client (npm run native:build; tokens in README)
 #   docker compose down -v               # stop and delete all data
 #
 # Secrets: values below are LOCAL DEMO credentials. In any shared environment
@@ -23,6 +23,12 @@ x-app: &app
     SHUTDOWN_GRACE_MS: "20000"
     MAX_UPLOAD_BYTES: "52428800"
     MAX_ROWS_PER_BATCH: "500000"
+    # Query workspace. The application provisions the privilege-less query login with this password.
+    QUERY_DB_PASSWORD: ${QUERY_DB_PASSWORD:-clearline-query-local-only}
+    # deterministic (default, no network) | anthropic | none. The key is taken from your shell only.
+    NL_SQL_PROVIDER: ${NL_SQL_PROVIDER:-deterministic}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
   restart: unless-stopped
 
 services:
@@ -82,7 +88,7 @@ services:
   demo:
     <<: *app
     profiles: [demo]
-    environment: { <<: *app-env, CLEARLINE_URL: "http://api:8080", DASHBOARD_URL: "http://localhost:${API_HOST_PORT:-8080}" }
+    environment: { <<: *app-env, CLEARLINE_URL: "http://api:8080", PUBLIC_URL: "http://localhost:${API_HOST_PORT:-8080}" }
     command: ["node", "dist/scripts/demo.js"]
     depends_on: { api: { condition: service_healthy } }
     restart: "no"
