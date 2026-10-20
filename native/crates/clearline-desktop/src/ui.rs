@@ -62,7 +62,7 @@ pub fn access_badge(level: &str, cx: &App) -> Div {
 pub fn page_head(title: impl Into<SharedString>, subtitle: Option<AnyElement>, actions: Option<AnyElement>, cx: &App) -> Div {
     let p = pal(cx);
     h_flex().items_start().justify_between().gap_4().mb_4()
-        .child(v_flex().gap_1().child(div().text_2xl().font_weight(FontWeight::BOLD).text_color(p.ink).child(title.into())).children(subtitle))
+        .child(v_flex().flex_1().min_w(px(0.)).gap_1().child(div().text_2xl().font_weight(FontWeight::BOLD).text_color(p.ink).child(title.into())).children(subtitle))
         .children(actions)
 }
 
@@ -116,15 +116,23 @@ pub fn loading(label: impl Into<SharedString>, cx: &App) -> Div {
 
 /// A small, non-virtualized table for short lists (a few hundred rows at most).
 pub fn simple_table(headers: &[&str], rows: Vec<Vec<AnyElement>>, numeric: &[usize], cx: &App) -> Div {
+    simple_table_weighted(headers, rows, numeric, &[], cx)
+}
+
+/// Like `simple_table`, with relative column widths (`weights[i]`, default 1).
+pub fn simple_table_weighted(headers: &[&str], rows: Vec<Vec<AnyElement>>, numeric: &[usize], weights: &[f32], cx: &App) -> Div {
     let p = pal(cx);
+    let weight = |i: usize| weights.get(i).copied().unwrap_or(1.0);
+    let sized = |mut d: Div, i: usize| { d.style().flex_grow = Some(weight(i)); d.style().flex_shrink = Some(1.0); d.flex_basis(px(0.)).min_w(px(70.)) };
     let head = h_flex().border_b_1().border_color(p.rule_strong).children(headers.iter().enumerate().map(|(i, h)| {
-        let cell = div().flex_1().min_w(px(70.)).py_1().pr_3().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(p.ink2).child(h.to_string());
+        let cell = sized(div(), i).py_1().pr_3().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(p.ink2).child(h.to_string());
         if numeric.contains(&i) { cell.text_right() } else { cell }
     }));
     v_flex().w_full().child(head).children(rows.into_iter().map(|r| {
         h_flex().items_start().border_b_1().border_color(p.rule).children(r.into_iter().enumerate().map(|(i, c)| {
-            let cell = h_flex().flex_1().min_w(px(70.)).py(px(6.)).pr_3().text_sm().text_color(p.ink).overflow_hidden().child(c);
-            if numeric.contains(&i) { cell.justify_end() } else { cell }
+            // A column (not a row) so long text wraps inside the cell instead of running into the next one.
+            let cell = sized(v_flex(), i).py(px(6.)).pr_3().text_sm().text_color(p.ink).overflow_hidden().child(c);
+            if numeric.contains(&i) { cell.items_end().text_right() } else { cell.items_start() }
         }))
     }))
 }

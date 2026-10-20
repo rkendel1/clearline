@@ -25,8 +25,12 @@ impl GridDelegate {
     pub fn new() -> Self { GridDelegate { cols: vec![], columns: vec![], rows: Arc::new(vec![]), order: vec![] } }
 
     pub fn set(&mut self, cols: Vec<GridColumn>, rows: Arc<Vec<Vec<Value>>>) {
-        self.columns = cols.iter().map(|c| {
-            let w = (c.name.len() as f32 * 9.0 + 48.0).clamp(110.0, 260.0);
+        self.columns = cols.iter().enumerate().map(|(i, c)| {
+            // Room for the name, the sort control and, for redacted columns, the "· redacted (style)" label,
+            // or for the widest value among the first rows, whichever is larger.
+            let label = c.name.len() as f32 * 9.0 + c.masked.as_ref().map_or(0.0, |m| (m.len() + 13) as f32 * 6.5);
+            let values = rows.iter().take(200).map(|r| r.get(i).map_or(0, |v| cell(v).chars().count())).max().unwrap_or(0) as f32 * 9.0;
+            let w = (label.max(values) + 48.0).clamp(110.0, 320.0);
             let col = Column::new(c.name.clone(), c.name.clone()).width(px(w)).sortable();
             if c.numeric { col.text_right() } else { col }
         }).collect();

@@ -19,7 +19,7 @@ process.env.QUERY_TIMEOUT_MS = '15000';
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { setup, teardown, client, DEV_TOKENS, evidence, sql, ROOT, type Ctx } from '../helpers/harness.js';
 import { Display, NativeApp, NATIVE_BIN } from '../helpers/native.js';
@@ -228,10 +228,16 @@ test('Scenario O: native workflow — NL query, edit, run, restricted fields, se
   evidence('Scenario O — Native GPUI end-to-end workflow', lines);
 });
 
-test('Native client integration: the Rust API client decodes every endpoint for every role (cargo test)', { skip: spawnSync('cargo', ['--version']).status !== 0 && 'cargo not installed' }, () => {
-  const r = spawnSync('cargo', ['test', '--manifest-path', path.join(ROOT, 'native/Cargo.toml'), '-p', 'clearline-client', '--', '--nocapture'],
-    { env: { ...process.env, CLEARLINE_TEST_URL: base }, encoding: 'utf8', timeout: 900_000 });
-  const out = `${r.stdout}\n${r.stderr}`;
+test('Native client integration: the Rust API client decodes every endpoint for every role (cargo test)', { skip: spawnSync('cargo', ['--version']).status !== 0 && 'cargo not installed' }, async () => {
+  // Asynchronous on purpose: the API under test runs in this process and must keep serving.
+  const r = await new Promise<{ status: number | null; out: string }>((resolve) => {
+    const c = spawn('cargo', ['test', '--manifest-path', path.join(ROOT, 'native/Cargo.toml'), '-p', 'clearline-client', '--', '--nocapture'], { env: { ...process.env, CLEARLINE_TEST_URL: base } });
+    let out = '';
+    c.stdout.on('data', (d) => { out += d; });
+    c.stderr.on('data', (d) => { out += d; });
+    c.on('close', (status) => resolve({ status, out }));
+  });
+  const out = r.out;
   assert.equal(r.status, 0, out.slice(-4000));
   assert.match(out, /every_role_decodes_what_it_may_see_and_is_refused_the_rest \.\.\. ok/);
   evidence('Native client integration (Rust)', ['clearline-client contract test against the live backend: 4 data roles x 16 endpoints decode or are refused (403) exactly per the server permissions; query lifecycle with client-chosen execution id; steward tighten/widen; approver, platform admin and cross-tenant tokens refused']);
@@ -253,6 +259,8 @@ test('Native client measurements: startup, large result, scrolling, typing durin
   await app.cmd({ cmd: 'query.validate' });
   const typing = await app.cmd({ cmd: 'bench.type', frames: 120, while_running: true });
   assert.equal(typing.query_running_at_start, true);
+  // A blocked UI thread would show one frame gap as long as the query (seconds); allow generous software-rendering jitter.
+  assert.ok(typing.frames.max_ms < 1000, `UI thread stalled while a query ran: max frame interval ${typing.frames.max_ms} ms`);
   const idleTyping = await app.cmd({ cmd: 'bench.type', frames: 120 });
   const report = await app.cmd({ cmd: 'perf' });
   const mark = report.marks.find((m: any) => /5000 rows/.test(m.label));

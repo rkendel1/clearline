@@ -194,7 +194,7 @@ impl Render for FieldsView {
                     ]
                 }).collect();
                 body = body.child(ui::section("entity", e.entity.clone(), e.description.clone().map(Into::into),
-                    ui::simple_table(&["Field", "Type", "Contract class", "Sensitivity", "Effective access by role", "Policy"], rows, &[], cx), cx));
+                    ui::simple_table_weighted(&["Field", "Type", "Contract class", "Sensitivity", "Effective access by role", "Policy"], rows, &[], &[1.3, 1.05, 0.9, 1.1, 1.9, 1.0], cx), cx));
             }
         } else if self.list.busy() { body = body.child(ui::loading("Loading field policies…", cx)); }
         if let Some(h) = self.history.ready() {

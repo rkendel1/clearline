@@ -273,7 +273,7 @@ impl QueryView {
         let running = self.phase == Phase::Running;
         let mut panel = v_flex().gap_3();
         // Header and SQL editor.
-        panel = panel.child(h_flex().justify_between().items_center()
+        panel = panel.child(v_flex().gap_1()
             .child(h_flex().gap_2().items_center().child(div().font_weight(FontWeight::BOLD).child("SQL proposal"))
                 .children(prop.map(|p| ui::tag(format!("{} · {}", p.source, &p.id[..8]), cx)))
                 .children(prop.and_then(|p| p.parent_id.as_ref()).map(|pid| ui::muted(format!("edited from {}", &pid[..8]), cx))))
