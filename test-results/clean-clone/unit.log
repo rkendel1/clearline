@@ -1,0 +1,56 @@
+
+> clearline@0.1.0 test:unit
+> node --import tsx --test --test-reporter=spec test/unit/*.test.ts
+
+✔ every shipped contract is valid (18.689861ms)
+✔ structural validation rejects unknown properties and unsupported declarations (13.043932ms)
+✔ semantic validation catches cross-reference and type errors with precise paths (27.980901ms)
+✔ migration plan classifies changes and refuses unsafe ones (25.902592ms)
+✔ storage generation is deterministic and quotes every identifier (3.581718ms)
+✔ docs/api.md matches the route table (run npm run docs:api) (1.440388ms)
+{"ts":"2026-10-20T00:46:11.583Z","level":"warn","msg":"x","svc":"t","payload":"[omitted]","authorization":"[omitted]","batch_id":"b1"}
+✔ a valid row is canonicalised deterministically (5.109174ms)
+✔ structural errors suppress business rules; business rules name the rule (2.11358ms)
+✔ PHI values are not echoed in error messages (0.202547ms)
+✔ sensitive data in unmapped columns is detected (0.493385ms)
+✔ bluefin semantics: concatenated key, implied cents, YYYYMMDD (1.046968ms)
+✔ rule conditions use SQL three-valued logic (0.161596ms)
+✔ record identity ignores field order (0.440405ms)
+✔ CSV adapter: structural problems are explicit (3.662968ms)
+✔ JSON adapter: scalars only (1.012436ms)
+✔ batch reconciliation explains each discrepancy (1.099952ms)
+✔ logger never writes payload-like fields (1.814517ms)
+✔ values resembling identifiers are not echoed even from non-sensitive fields (0.288092ms)
+✔ masking styles (1.076008ms)
+✔ contract defaults reproduce the pre-existing rule: pii/phi sensitive, unmasked for admins only (1.402552ms)
+✔ change classification: anything that is not strictly narrowing is widening (0.443687ms)
+✔ the query login must differ from the service login, and production needs it configured (2.808821ms)
+✔ accepts analytical SELECTs and rewrites them onto the tenant query schema with a row cap (42.180648ms)
+✔ rejects every non-SELECT statement, multiple statements and data-modifying constructs (8.607801ms)
+✔ rejects system catalogs, internal schemas, other tenants and dangerous functions with uniform errors (9.993714ms)
+✔ a hidden field is indistinguishable from a field that does not exist (8.208029ms)
+✔ filter-only fields: relationship joins and null tests only; never returned, compared, sorted, grouped or aggregated (8.296251ms)
+✔ masked fields are returned only in redacted form, computed by the database (3.193397ms)
+✔ discover-only fields are listed but unusable (1.301535ms)
+✔ marking a field sensitive never widens access (0.741574ms)
+✔ table-level policy hides a whole table (0.829356ms)
+✔ unsupported constructs fail closed (6.434064ms)
+✔ ambiguous and unknown references are rejected (0.704661ms)
+✔ relationship joins between restricted keys are allowed only along declared relationships (2.274216ms)
+✔ string transforms are null-preserving (0.888399ms)
+✔ map_values honours the unmapped policy (0.332953ms)
+✔ parse_date accepts only real calendar dates in the declared format (0.447402ms)
+✔ parse_decimal handles currency formatting, accounting negatives and implied scale (0.596831ms)
+✔ parse_integer and parse_boolean reject anything ambiguous (0.333319ms)
+✔ decimal normalisation enforces scale and precision without rounding (1.325654ms)
+✔ exact decimal arithmetic for financial totals (3.565328ms)
+✔ parseCanonical produces stable canonical forms per type (0.690357ms)
+✔ field constraints (0.416707ms)
+ℹ tests 43
+ℹ suites 0
+ℹ pass 43
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1375.026346

@@ -1,0 +1,117 @@
+    Fetching advisory database from `https://github.com/RustSec/advisory-db.git`
+      Loaded 1338 security advisories (from /root/.cargo/advisory-db)
+    Updating crates.io index
+    Scanning Cargo.lock for vulnerabilities (779 crate dependencies)
+Crate:     async-std
+Version:   1.13.2
+Warning:   unmaintained
+Title:     async-std has been discontinued
+Date:      2025-08-24
+ID:        RUSTSEC-2025-0052
+URL:       https://rustsec.org/advisories/RUSTSEC-2025-0052
+
+Crate:     instant
+Version:   0.1.13
+Warning:   unmaintained
+Title:     `instant` is unmaintained
+Date:      2024-09-01
+ID:        RUSTSEC-2024-0384
+URL:       https://rustsec.org/advisories/RUSTSEC-2024-0384
+
+Crate:     paste
+Version:   1.0.15
+Warning:   unmaintained
+Title:     paste - no longer maintained
+Date:      2024-10-07
+ID:        RUSTSEC-2024-0436
+URL:       https://rustsec.org/advisories/RUSTSEC-2024-0436
+
+Crate:     proc-macro-error2
+Version:   2.0.1
+Warning:   unmaintained
+Title:     proc-macro-error2 is unmaintained
+Date:      2026-06-07
+ID:        RUSTSEC-2026-0173
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0173
+
+Crate:     rustls-pemfile
+Version:   2.2.0
+Warning:   unmaintained
+Title:     rustls-pemfile is unmaintained
+Date:      2025-11-28
+ID:        RUSTSEC-2025-0134
+URL:       https://rustsec.org/advisories/RUSTSEC-2025-0134
+
+Crate:     rustybuzz
+Version:   0.14.1
+Warning:   unmaintained
+Title:     `rustybuzz` is unmaintained
+Date:      2026-07-11
+ID:        RUSTSEC-2026-0206
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0206
+
+Crate:     rustybuzz
+Version:   0.20.1
+Warning:   unmaintained
+Title:     `rustybuzz` is unmaintained
+Date:      2026-07-11
+ID:        RUSTSEC-2026-0206
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0206
+
+Crate:     ttf-parser
+Version:   0.20.0
+Warning:   unmaintained
+Title:     `ttf-parser` is unmaintained
+Date:      2026-06-28
+ID:        RUSTSEC-2026-0192
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0192
+
+Crate:     ttf-parser
+Version:   0.21.1
+Warning:   unmaintained
+Title:     `ttf-parser` is unmaintained
+Date:      2026-06-28
+ID:        RUSTSEC-2026-0192
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0192
+
+Crate:     ttf-parser
+Version:   0.25.1
+Warning:   unmaintained
+Title:     `ttf-parser` is unmaintained
+Date:      2026-06-28
+ID:        RUSTSEC-2026-0192
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0192
+
+Crate:     unsafe-libyaml
+Version:   0.2.11
+Warning:   unmaintained
+Title:     unsafe-libyaml is unmaintained
+Date:      2024-03-25
+ID:        RUSTSEC-2024-0449
+URL:       https://rustsec.org/advisories/RUSTSEC-2024-0449
+
+Crate:     zbus_names
+Version:   4.3.5
+Warning:   unmaintained
+Title:     `zbus_names` is unmaintained
+Date:      2026-10-16
+ID:        RUSTSEC-2026-0371
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0371
+
+Crate:     zvariant
+Version:   5.15.1
+Warning:   unmaintained
+Title:     `zvariant` is unmaintained
+Date:      2026-10-16
+ID:        RUSTSEC-2026-0370
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0370
+
+Crate:     zvariant_derive
+Version:   5.15.1
+Warning:   unmaintained
+Title:     `zvariant_derive` is unmaintained
+Date:      2026-10-16
+ID:        RUSTSEC-2026-0372
+URL:       https://rustsec.org/advisories/RUSTSEC-2026-0372
+
+warning: 14 allowed warnings found

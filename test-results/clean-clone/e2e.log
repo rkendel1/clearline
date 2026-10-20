@@ -1,0 +1,16 @@
+
+> clearline@0.1.0 test:e2e
+> node --import tsx --test --test-concurrency=1 --test-reporter=spec test/e2e/*.test.ts
+
+✔ Scenario J (native): the overview shows ground truth for both tenants; roles see only their views (3276.218512ms)
+✔ Scenario O: native workflow — NL query, edit, run, restricted fields, sensitivity change, redaction (8371.453449ms)
+✔ Native client integration: the Rust API client decodes every endpoint for every role (cargo test) (15500.048995ms)
+✔ Native client measurements: startup, large result, scrolling, typing during a running query (23000.079112ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 4
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 52198.868992

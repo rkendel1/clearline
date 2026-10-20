@@ -1,0 +1,33 @@
+   Compiling clearline-client v0.1.0 (/tmp/claude-0/-home-user-clearline/92d88a1e-d8c8-5388-ad11-df333654c480/scratchpad/clean/native/crates/clearline-client)
+   Compiling clearline-desktop v0.1.0 (/tmp/claude-0/-home-user-clearline/92d88a1e-d8c8-5388-ad11-df333654c480/scratchpad/clean/native/crates/clearline-desktop)
+    Finished `release` profile [optimized + debuginfo] target(s) in 7.36s
+warning: the following packages contain code that will be rejected by a future version of Rust: proc-macro-error2 v2.0.1
+note: to see what the problems were, use the option `--future-incompat-report`, or run `cargo report future-incompatibilities --id 1`
+     Running unittests src/lib.rs (native/target/release/deps/clearline_client-3d25aa8f6196111f)
+
+running 3 tests
+test format::tests::timestamps ... ok
+test format::tests::digits_and_units ... ok
+test api::tests::errors_map_to_actionable_kinds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/backend.rs (native/target/release/deps/backend-8a8ca0d589f882d6)
+
+running 1 test
+test every_role_decodes_what_it_may_see_and_is_refused_the_rest ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (native/target/release/deps/clearline-75778383d7d58c44)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests clearline_client
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

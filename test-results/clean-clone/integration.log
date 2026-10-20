@@ -1,0 +1,26 @@
+
+> clearline@0.1.0 test:integration
+> node --import tsx --test --test-concurrency=1 --test-reporter=spec test/integration/*.test.ts
+
+✔ operational endpoints: liveness, readiness, metrics, correlation ids (661.052763ms)
+✔ role matrix is enforced by the backend (45.582557ms)
+✔ platform admin can provision a tenant; ids are validated (68.050179ms)
+✔ structurally invalid payloads are rejected and recorded, never processed (55.265024ms)
+{"ts":"2026-10-20T00:46:15.218Z","level":"error","msg":"batch failed","service":"clearline-worker","worker_id":"vm-1779-944106bc","batch_id":"4c6c53c8-00bb-4cb9-87b9-0ff58cce0a81","tenant":"northwind","attempt":1,"correlation_id":"4439bfbc-ed70-4529-a3b6-4678e071be03","error":{"name":"InjectedFaultError","message":"injected failure after writing 40 rows (transaction will roll back)"}}
+✔ a failed batch leaves no effects, is inspectable, and replays safely (178.116863ms)
+✔ quarantine items can be resolved (audited) without being admitted (80.45695ms)
+✔ subject erasure removes all versions, records the removal, and keeps reconciliation honest (135.946409ms)
+✔ retention purges raw payloads and resolved quarantine but keeps provenance (23.06899ms)
+✔ data layer refuses a tenant transaction that does not match the request principal (independent of route checks) (10.932815ms)
+✔ platform admin cannot escalate into tenant data: bootstrap-only token issuance and revocation (33.497491ms)
+✔ audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor (22.576354ms)
+✔ sensitive-looking values in non-sensitive fields are never echoed and are scrubbed from raw payloads (53.656907ms)
+✔ input edge cases return 4xx, never 500 (13.761963ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3008.895225

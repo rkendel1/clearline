@@ -1,0 +1,33 @@
+
+> clearline@0.1.0 test:scenarios
+> node -e "require('fs').mkdirSync('test-results',{recursive:true});require('fs').rmSync('test-results/evidence.md',{force:true})" && node --import tsx --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=junit --test-reporter-destination=test-results/scenarios.junit.xml test/scenarios/*.test.ts
+
+✔ Scenario A: valid batch flows from source row to metric and extract (1190.842389ms)
+✔ Scenario B: two tenants, two canonical models, one codebase (1458.705678ms)
+✔ Scenario C: duplicate submissions have no duplicate business effects (1210.075489ms)
+✔ Scenario D: invalid records are quarantined with actionable errors and excluded from metrics (892.87623ms)
+✔ Scenario E: corrections supersede, late versions become history, conflicts are quarantined (1319.869981ms)
+✔ Scenario F1: worker killed mid-transaction recovers safely after restart (5938.443172ms)
+✔ Scenario F2: SIGTERM mid-batch aborts, re-queues and exits cleanly (3930.106072ms)
+✔ Scenario G: cross-tenant and sensitive-export attempts are denied and audited (1027.294868ms)
+{"ts":"2026-10-20T00:46:47.567Z","level":"error","msg":"batch failed","service":"clearline-worker","worker_id":"vm-2306-e5809091","batch_id":"84cba630-967a-4626-9906-c87455f7aff9","tenant":"northwind","attempt":1,"correlation_id":"0cc096e6-b5c7-4759-8048-f6bd26813644","error":{"name":"ContractSupersededError","message":"batch was submitted under contract 2.1.0, but breaking migration(s) 6 have since been applied (active 3.0.0); replay re-processes it under 3.0.0"}}
+✔ Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely (2487.010044ms)
+✔ Scenario I: discrepancies are detected, explained, and removed from trusted outputs (1787.806215ms)
+✔ Scenario J: reports, SQL views and extracts agree with independent queries and ground truth (1720.459098ms)
+✔ Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL (1877.972462ms)
+✔ Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed (245.232828ms)
+✔ Scenario L: a restricted field cannot be obtained by a role that may not see it (2242.941864ms)
+✔ Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail (2765.358227ms)
+✔ Scenario N1: cross-tenant access through generated and edited SQL is rejected (2055.865615ms)
+✔ Scenario N2: the database enforces isolation even if the validator were bypassed (35.122279ms)
+✔ Scenario N3: restricted fields resist counts, grouping, filtering, sorting, joins and derived expressions (359.046614ms)
+✔ Scenario N4: error messages, query history and exports disclose nothing (293.137311ms)
+✔ Scenario N5: runaway and unsafe queries fail closed (timeout, cancellation, concurrency, limits) (3432.937739ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 57995.386808
