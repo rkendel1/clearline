@@ -20,24 +20,45 @@ export type Permission =
   | 'audit:read' | 'retention:run' | 'subject:erase'
   // Analytical query workspace and field-level policy (docs/query-workspace.md).
   | 'query:discover' | 'query:propose' | 'query:run' | 'query:export' | 'query:history' | 'query:history_all'
-  | 'policy:read' | 'policy:manage' | 'policy:grant';
+  | 'policy:read' | 'policy:manage' | 'policy:grant'
+  // Saved analytics (docs/saved-analytics.md). saved_query:admin manages other users' queries and schedules.
+  | 'saved_query:read' | 'saved_query:write' | 'saved_query:share' | 'saved_query:admin'
+  | 'schedule:manage' | 'delivery:manage' | 'analysis:run' | 'analysis:read' | 'notification:read';
+
+const ANALYTICS_USER: Permission[] = ['saved_query:read', 'saved_query:write', 'schedule:manage', 'analysis:run', 'analysis:read', 'notification:read'];
 
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   platform_admin: new Set(['tenant:create', 'token:issue']),
   admin: new Set(['token:issue', 'contract:read', 'contract:publish', 'batch:submit', 'batch:read', 'batch:replay',
     'quarantine:read', 'quarantine:resolve', 'record:read', 'record:read_sensitive', 'lineage:read', 'report:read', 'extract:run',
     'extract:sensitive', 'audit:read', 'retention:run', 'subject:erase',
-    'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'query:history_all', 'policy:read', 'policy:manage', 'policy:grant']),
+    'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'query:history_all', 'policy:read', 'policy:manage', 'policy:grant',
+    ...ANALYTICS_USER, 'saved_query:share', 'saved_query:admin', 'delivery:manage']),
   // Separation of duties: approvers only decide on contract migrations and see no tenant data.
   // Their tokens are issued by the platform administrator, never by tenant admins.
   approver: new Set(['contract:read', 'contract:approve']),
   // Data stewards classify fields and can only make policies stricter (policy:grant loosens; admins only).
   // They see original sensitive values only where a field policy lists them in unmask_roles.
   steward: new Set(['contract:read', 'report:read', 'audit:read', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'query:history_all',
-    'policy:read', 'policy:manage']),
+    'policy:read', 'policy:manage', ...ANALYTICS_USER, 'saved_query:share', 'delivery:manage']),
   operator: new Set(['contract:read', 'batch:submit', 'batch:read', 'batch:replay', 'quarantine:read', 'quarantine:resolve',
-    'record:read', 'lineage:read', 'report:read', 'extract:run', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'policy:read']),
-  reporter: new Set(['contract:read', 'batch:read', 'report:read', 'extract:run', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history']),
+    'record:read', 'lineage:read', 'report:read', 'extract:run', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history', 'policy:read',
+    ...ANALYTICS_USER, 'saved_query:share']),
+  reporter: new Set(['contract:read', 'batch:read', 'report:read', 'extract:run', 'query:discover', 'query:propose', 'query:run', 'query:export', 'query:history',
+    ...ANALYTICS_USER]),
+};
+
+/**
+ * Execution identities for schedules: a token holding `role` may let its schedules run as one of
+ * these roles. A schedule never runs with more than the role it names, and that role is re-checked
+ * against the token's CURRENT role on every run (an admin can choose to run a schedule as a reporter).
+ */
+export const DELEGABLE_ROLES: Record<Role, readonly Role[]> = {
+  platform_admin: [], approver: [],
+  admin: ['admin', 'steward', 'operator', 'reporter'],
+  steward: ['steward', 'reporter'],
+  operator: ['operator', 'reporter'],
+  reporter: ['reporter'],
 };
 
 export interface Principal {

@@ -35,6 +35,26 @@ export class DeterministicProvider implements SqlProvider {
     const q = req.question.toLowerCase();
     const cat = req.catalog;
 
+    // "Daily paid claim amounts, claim counts and average payment for the last 180 days."
+    // "Weekly payment totals for the last 26 weeks."
+    const grain = /\b(daily|per day|each day|by day)\b/.test(q) ? 'day' : /\b(weekly|per week|each week|by week)\b/.test(q) ? 'week' : null;
+    if (grain && /paid|payment/.test(q)) {
+      const t = claimTable(cat);
+      const amt = t && amountCol(t, [/^paid/, /paid/]);
+      const d = t && dateCol(t);
+      if (!t || !amt || !d) return cannot(NOT_MAPPED);
+      const m = /(?:last|past) (\d{1,4}) (day|week)s?/.exec(q);
+      const days = m ? Number(m[1]) * (m[2] === 'week' ? 7 : 1) : grain === 'day' ? 180 : 182;
+      const bucket = grain === 'day' ? `c.${d}` : `date_trunc('week', c.${d})::date`;
+      const name = grain === 'day' ? 'day' : 'week';
+      return {
+        kind: 'proposal',
+        sql: `SELECT ${bucket} AS ${name}, sum(c.${amt}) AS paid, count(*) AS claims, round(avg(c.${amt}), 2) AS avg_paid\nFROM ${t.name} c\nWHERE c.${d} >= current_date - ${days}\n  AND c._trust_status = 'trusted'\nGROUP BY 1\nORDER BY 1`,
+        explanation: `Per ${grain} of ${t.name}.${d}: the sum of ${t.name}.${amt}, the number of claims and the average payment, for the last ${days} days, trusted data only. One row per ${grain} that has claims (${grain}s without claims are absent).`,
+        assumptions: [`The window is the last ${days} days before ${req.today}.`, `"Paid amount" is ${t.name}.${amt}.`, grain === 'week' ? 'Weeks start on Monday.' : 'A day is the service date.'],
+      };
+    }
+
     // "Show the total paid amount by tenant for the last month."
     if (/total/.test(q) && /paid/.test(q) && /(last|previous) month/.test(q)) {
       const t = claimTable(cat);
