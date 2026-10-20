@@ -41,7 +41,8 @@
     "Email and webhooks were tested against local receivers, not real relays or remote endpoints.",
     "macOS and Windows builds of the native client, and GPU rendering, are unverified.",
     "Alerting rules, dashboards in a monitoring system, automated backups and infrastructure as code are not shipped.",
-    "Test evidence was recorded at commit dc06c95. Later changes (the web client, the assistant) have their own, smaller evidence as stated on each capability."
+    "Test evidence was recorded at commit dc06c95. Later changes (the web client, the assistant) have their own, smaller evidence as stated on each capability.",
+    "The assistant answers data questions through a fixed set of validated operations. Anonymous data answers are only available when an operator enables a synthetic demo tenant, and are rate limited per process."
   ],
   "scenarios": [
     [

@@ -17,7 +17,7 @@ test('the diagram reflects the discovered components, not an aspirational set', 
   for (const must of ['api', 'pipeline', 'query', 'analytics', 'postgres', 'reporting', 'evidence', 'delivery', 'retrieval', 'assistant', 'datatools']) assert.ok(ids.includes(must), must);
   // Things the specification's logical diagram has that the repository does not: no separate ML service, warehouse, queue or vector database.
   for (const absent of ['ml-service', 'warehouse', 'queue', 'vector-db', 'orchestrator']) assert.ok(!ids.includes(absent), absent);
-  assert.equal(c.components.find((x) => x.id === 'datatools')!.status, 'planned');
+  assert.equal(c.components.find((x) => x.id === 'datatools')!.status, 'implemented');
   assert.ok(c.diagram.edges.some((e) => e.kind === 'retrieval') && c.diagram.edges.some((e) => e.kind === 'async'));
   assert.ok(c.diagram.boundaries.length >= 2);
 });
@@ -31,12 +31,14 @@ test('capability statuses use only the four labels, and verified ones carry test
   }
   // Honest about what is not verified: the web client and the assistant are not "verified" by the recorded scenario run.
   assert.notEqual(c.capabilities.find((k) => k.id === 'web-client')!.status, 'Implemented and verified');
-  assert.equal(c.capabilities.find((k) => k.id === 'assistant-data-tools')!.status, 'Planned');
+  // The data tools have automated tests, but those postdate the recorded run, so they are not labelled verified.
+  assert.equal(c.capabilities.find((k) => k.id === 'assistant-data-tools')!.status, 'Implemented; verification incomplete');
+  assert.notEqual(c.capabilities.find((k) => k.id === 'grounded-assistant')!.status, 'Implemented and verified');
 });
 
 test('validation rejects an upgraded status, a missing evidence file and a dangling reference', () => {
-  const a = fresh(); a.capabilities.find((k) => k.id === 'assistant-data-tools')!.status = 'Implemented and verified';
-  assert.ok(validateContent(a).some((p) => p.includes('assistant-data-tools')));
+  const a = fresh(); a.capabilities.find((k) => k.id === 'web-client')!.status = 'Implemented and verified'; a.capabilities.find((k) => k.id === 'web-client')!.verification = { doc: 'docs/test-results.md', note: '' };
+  assert.ok(validateContent(a).some((p) => p.includes('web-client') && p.includes('verified status needs')));
   const b = fresh(); b.capabilities[0].evidence.push({ type: 'test', path: 'test/does-not-exist.test.ts' });
   assert.ok(validateContent(b).some((p) => p.includes('missing evidence')));
   const c = fresh(); c.components[0].dependencies.push('nope');

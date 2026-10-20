@@ -36,6 +36,9 @@ x-app: &app
     EMAIL_OUTBOX_DIR: /tmp/clearline-outbox
     SMTP_URL: ${SMTP_URL:-}
     PUBLIC_URL: http://localhost:${API_HOST_PORT:-8080}
+    # Anonymous assistant data questions run only against this tenant, as its least-privileged role (synthetic demo data).
+    # Leave unset anywhere real data could exist: unset means anonymous visitors get no data answers.
+    ASSISTANT_PUBLIC_DATA_TENANT: ${ASSISTANT_PUBLIC_DATA_TENANT-northwind}
   restart: unless-stopped
 
 services:

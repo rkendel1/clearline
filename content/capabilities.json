@@ -476,8 +476,8 @@
     },
     {
       "id": "grounded-assistant",
-      "name": "Grounded assistant: architecture and design questions",
-      "status": "Partially implemented",
+      "name": "Grounded assistant: design, capability and data questions",
+      "status": "Implemented; verification incomplete",
       "actors": [
         "leader",
         "architect",
@@ -492,6 +492,14 @@
         {
           "type": "test",
           "path": "test/unit/assistant.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/integration/assistant.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/e2e/assistant-web.test.ts"
         }
       ],
       "docs": [
@@ -502,40 +510,57 @@
         "label": "Ask Clearline"
       },
       "limitations": [
-        "Retrieval quality is measured on a small evaluation set; see the recorded results, not a claimed accuracy.",
-        "Model-written answers need a configured provider; otherwise answers are extractive and labelled."
+        "Retrieval quality is measured on a small evaluation set (see docs/assistant-evaluation.md); paraphrased questions rank lower and one of seven missed.",
+        "Model-written answers need a configured provider; otherwise answers are extractive and labelled.",
+        "Live model answers are exercised manually, not in automated tests."
       ],
       "verification": {
-        "doc": "docs/production-readiness.md",
-        "note": "See the limitations listed for this capability."
+        "doc": "docs/assistant-evaluation.md",
+        "note": "Tests and a retrieval evaluation exist; they postdate the recorded scenario run."
       }
     },
     {
       "id": "assistant-data-tools",
       "name": "Assistant data tools (questions about current values)",
-      "status": "Planned",
+      "status": "Implemented; verification incomplete",
       "actors": [
         "analyst",
         "leader"
       ],
-      "description": "Planned: narrow, authorized, templated operations so the assistant can answer questions about demo data from actual computation, with query evidence.",
-      "business_value": "Numbers in answers must come from computation, not from retrieved text.",
-      "use_case": "Ask for the paid amount last month and receive the value, window, definition and a query reference.",
-      "scenarios": [],
-      "evidence": [],
+      "description": "The assistant answers questions about demo data from computation: a metric's current value, a metric over a period (optionally grouped), a comparison of two periods, data quality and reconciliation status, and (signed in) recent runs and their insights. Figures come only from validated, read-only queries, each recorded as evidence with its definition, window, execution id and limitations.",
+      "business_value": "Numbers in answers come from computation with evidence, not from retrieved text.",
+      "use_case": "Ask for the total paid amount last month: the answer gives the value, the metric definition, the exact window, and a link to the recorded computation.",
+      "scenarios": [
+        "B"
+      ],
+      "evidence": [
+        {
+          "type": "test",
+          "path": "test/integration/assistant-data.test.ts"
+        },
+        {
+          "type": "test",
+          "path": "test/unit/data-tools.test.ts"
+        }
+      ],
       "docs": [
-        "docs/adr/0018-grounded-assistant.md"
+        "docs/adr/0018-grounded-assistant.md",
+        "docs/metrics.md"
       ],
       "demo": {
-        "view": "query",
-        "label": "Use the query workspace today"
+        "view": "",
+        "label": "Ask Clearline"
       },
       "limitations": [
-        "Not implemented. Today the assistant declines to state current values and points to the query workspace."
+        "A fixed set of operations: a question outside them is declined, with the supported metrics listed. Free-form analytical questions belong in the query workspace.",
+        "Anonymous data answers exist only where an operator names a synthetic demo tenant (ASSISTANT_PUBLIC_DATA_TENANT); unset means none.",
+        "Period queries need a date field per entity (content/data-tools.json); other metrics report current values only.",
+        "Period comparisons are measurements, not explanations. Interpretation of a run lists the recorded insights and generic hypotheses clearly marked as not evidence.",
+        "Verified by automated tests added after the recorded run (commit dc06c95); not part of that recorded result, and live model planning is untested."
       ],
       "verification": {
         "doc": "docs/production-readiness.md",
-        "note": "See the limitations listed for this capability."
+        "note": "Automated unit and integration tests compare results with the synthetic generator and independent SQL; they were added after the recorded scenario run, so this is not labelled verified."
       }
     }
   ]

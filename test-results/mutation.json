@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-10-20T02:34:06.099Z",
-  "mutations": 31,
-  "killed": 31,
+  "generated_at": "2026-10-20T15:15:14.760Z",
+  "mutations": 40,
+  "killed": 40,
   "survived": 0,
   "results": [
     {
@@ -17,7 +17,7 @@
         "Scenario D: invalid records are quarantined with actionable errors and excluded from metrics",
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 6
+      "seconds": 3
     },
     {
       "id": "route-tenant-check-removed",
@@ -30,7 +30,7 @@
       "failing_tests": [
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
       ],
-      "seconds": 3
+      "seconds": 2
     },
     {
       "id": "data-layer-tenant-guard-removed",
@@ -43,7 +43,7 @@
       "failing_tests": [
         "data layer refuses a tenant transaction that does not match the request principal (independent of route checks)"
       ],
-      "seconds": 3
+      "seconds": 1
     },
     {
       "id": "idempotency-removed",
@@ -56,7 +56,7 @@
       "failing_tests": [
         "Scenario C: duplicate submissions have no duplicate business effects"
       ],
-      "seconds": 3
+      "seconds": 1
     },
     {
       "id": "redaction-removed",
@@ -71,7 +71,7 @@
         "Scenario A: valid batch flows from source row to metric and extract",
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited"
       ],
-      "seconds": 6
+      "seconds": 3
     },
     {
       "id": "control-count-ignored",
@@ -84,7 +84,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 3
+      "seconds": 1
     },
     {
       "id": "untrusted-versions-count-as-duplicates",
@@ -97,7 +97,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 3
+      "seconds": 2
     },
     {
       "id": "trusted-view-uses-current-only",
@@ -110,7 +110,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 3
+      "seconds": 1
     },
     {
       "id": "self-approval-allowed",
@@ -123,7 +123,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 3
+      "seconds": 1
     },
     {
       "id": "platform-admin-escalation",
@@ -136,7 +136,7 @@
       "failing_tests": [
         "platform admin cannot escalate into tenant data: bootstrap-only token issuance and revocation"
       ],
-      "seconds": 3
+      "seconds": 2
     },
     {
       "id": "migration-drift-unchecked",
@@ -149,7 +149,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "queued-batch-uses-superseded-contract",
@@ -162,7 +162,7 @@
       "failing_tests": [
         "Scenario H: breaking change is planned, unsafe change rejected, approved migration applied and rolled back safely"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "dataset-checks-ignored-by-metrics",
@@ -175,7 +175,7 @@
       "failing_tests": [
         "Scenario I: discrepancies are detected, explained, and removed from trusted outputs"
       ],
-      "seconds": 3
+      "seconds": 2
     },
     {
       "id": "audit-floor-removed",
@@ -188,7 +188,7 @@
       "failing_tests": [
         "audit trail records reads (subject keys hashed), resolutions, retention and erasure; the database enforces its retention floor"
       ],
-      "seconds": 3
+      "seconds": 2
     },
     {
       "id": "validator-restricted-check-removed",
@@ -206,7 +206,7 @@
         "masked fields are returned only in redacted form, computed by the database",
         "relationship joins between restricted keys are allowed only along declared relationships"
       ],
-      "seconds": 8
+      "seconds": 6
     },
     {
       "id": "mask-rewrite-skipped",
@@ -221,7 +221,7 @@
         "Scenario L: a restricted field cannot be obtained by a role that may not see it",
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
       ],
-      "seconds": 7
+      "seconds": 4
     },
     {
       "id": "hidden-columns-granted",
@@ -234,7 +234,7 @@
       "failing_tests": [
         "Scenario L: a restricted field cannot be obtained by a role that may not see it"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "steward-may-widen",
@@ -247,7 +247,7 @@
       "failing_tests": [
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "sensitivity-does-not-mask",
@@ -262,7 +262,7 @@
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail",
         "contract defaults reproduce the pre-existing rule: pii/phi sensitive, unmasked for admins only"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "history-not-withheld",
@@ -275,7 +275,7 @@
       "failing_tests": [
         "Scenario N4: error messages, query history and exports disclose nothing"
       ],
-      "seconds": 8
+      "seconds": 5
     },
     {
       "id": "execute-without-revalidation",
@@ -289,7 +289,7 @@
         "Scenario K: question -> inspectable proposal -> explicit execution -> results equal independent SQL",
         "Scenario K: an unavailable provider fails clearly and recoverably; hostile model output is never executed"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "records-unredacted",
@@ -304,7 +304,7 @@
         "Scenario G: cross-tenant and sensitive-export attempts are denied and audited",
         "Scenario M: marking a field sensitive redacts it everywhere, durably, with an audit trail"
       ],
-      "seconds": 7
+      "seconds": 3
     },
     {
       "id": "revoked-identity-still-runs",
@@ -317,7 +317,7 @@
       "failing_tests": [
         "Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed"
       ],
-      "seconds": 4
+      "seconds": 2
     },
     {
       "id": "run-as-role-not-delegation-checked",
@@ -330,7 +330,7 @@
       "failing_tests": [
         "Scenario Q4: lost authorization blocks the next run; a failed query is never reported as delivered"
       ],
-      "seconds": 7
+      "seconds": 4
     },
     {
       "id": "delivery-not-reauthorized",
@@ -345,7 +345,7 @@
         "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered",
         "Scenario T1: save -> schedule daily -> detect the known anomaly -> insight -> notification; revoke -> denied, nothing exposed"
       ],
-      "seconds": 9
+      "seconds": 5
     },
     {
       "id": "webhook-private-targets-allowed",
@@ -375,7 +375,7 @@
         "Scenario R2: permanent failure, timeout, exhausted attempts and manual retry without re-running the query",
         "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered"
       ],
-      "seconds": 6
+      "seconds": 3
     },
     {
       "id": "sensitive-feature-allowed",
@@ -390,7 +390,7 @@
         "Scenario S4: sensitive or redacted fields cannot enter an analysis; insufficient data is explicit",
         "configuration: redacted, sensitive, non-numeric and missing columns are refused; schema drift is stale"
       ],
-      "seconds": 5
+      "seconds": 3
     },
     {
       "id": "narrative-not-grounded",
@@ -405,7 +405,7 @@
         "Scenario S5: model-written summaries are checked against computed evidence and never replace it",
         "model summaries cannot override computed metrics: ungrounded numbers and causal claims are rejected"
       ],
-      "seconds": 5
+      "seconds": 6
     },
     {
       "id": "run-results-not-remasked",
@@ -434,7 +434,128 @@
         "Scenario R3: redacted fields stay redacted, and results that became restricted are never delivered",
         "Scenario R4: test deliveries report exactly what happened"
       ],
-      "seconds": 4
+      "seconds": 8
+    },
+    {
+      "id": "assistant-access-filter-removed",
+      "protects": "anonymous retrieval never returns documents classified for signed-in users",
+      "file": "src/assistant/store.ts",
+      "tests": [
+        "test/integration/assistant.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "access classes: restricted documents are never returned to anonymous retrieval"
+      ],
+      "seconds": 6
+    },
+    {
+      "id": "assistant-restricted-source-served",
+      "protects": "documents classified for signed-in users are not served to anonymous callers",
+      "file": "src/assistant/routes.ts",
+      "tests": [
+        "test/integration/assistant.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "HTTP: public content and status need no account; sources, tokens, validation and limits are enforced"
+      ],
+      "seconds": 5
+    },
+    {
+      "id": "assistant-destinations-unvalidated",
+      "protects": "the assistant can only link to known destinations, never an arbitrary URL or path",
+      "file": "src/assistant/answer.ts",
+      "tests": [
+        "test/unit/assistant.test.ts",
+        "test/integration/assistant.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "prompt injection in an indexed document cannot change the answer mode, add destinations, or widen access",
+        "destinations are validated against the content model: no arbitrary URLs or paths"
+      ],
+      "seconds": 5
+    },
+    {
+      "id": "data-tool-extra-arguments-allowed",
+      "protects": "data tools reject unknown arguments (no SQL, tenant or role can be smuggled in)",
+      "file": "src/assistant/tools.ts",
+      "tests": [
+        "test/integration/assistant-data.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "arbitrary SQL and hostile arguments cannot reach the database; unsupported columns, tables and tools are rejected"
+      ],
+      "seconds": 3
+    },
+    {
+      "id": "data-tool-signed-in-only-check-removed",
+      "protects": "anonymous callers cannot use the signed-in-only tools (runs and insights)",
+      "file": "src/assistant/tools.ts",
+      "tests": [
+        "test/integration/assistant-data.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "the public identity is confined to its demo tenant, the least-privileged role and the public tools"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "public-identity-escalated",
+      "protects": "anonymous data answers run as the least-privileged role",
+      "file": "src/assistant/tools.ts",
+      "tests": [
+        "test/integration/assistant-data.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "the public identity is confined to its demo tenant, the least-privileged role and the public tools",
+        "field-level restrictions are re-applied at execution: a field hidden from the role yields no figure",
+        "a failed calculation never produces a figure, and failures are audited without values"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "evidence-readable-by-anyone",
+      "protects": "evidence of a signed-in answer is readable only by the identity that asked",
+      "file": "src/assistant/tools.ts",
+      "tests": [
+        "test/integration/assistant-data.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "signed-in questions use the caller's own tenant and role; evidence is readable only by the identity that asked"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "untrusted-value-reported-as-current",
+      "protects": "the figure in a data answer is the trusted value, not the including-untrusted one",
+      "file": "src/assistant/data.ts",
+      "tests": [
+        "test/integration/assistant-data.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "a value from an untrusted batch is never reported as the metric: the trusted figure is given and the exclusion is stated"
+      ],
+      "seconds": 2
+    },
+    {
+      "id": "data-question-rate-limit-removed",
+      "protects": "data questions have their own tighter rate limit",
+      "file": "src/assistant/routes.ts",
+      "tests": [
+        "test/integration/assistant-data.test.ts"
+      ],
+      "killed": true,
+      "failing_tests": [
+        "HTTP: data questions have their own, tighter rate limit and the status endpoint reports the tools"
+      ],
+      "seconds": 2
     }
   ]
 }

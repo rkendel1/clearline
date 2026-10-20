@@ -1,0 +1,6 @@
+{
+  "note": "Approved inputs for the assistant's data tools. Measures themselves are taken from the active contract's declared metrics, so nothing here names a tenant. An entity without a date field supports only current values, not periods.",
+  "date_fields": { "claim": "service_date", "pharmacy_fill": "fill_date", "rx_claim": "fill_date" },
+  "dimensions": { "claim": ["status"], "pharmacy_fill": ["status"], "member": ["status"], "rx_claim": ["claim_state"] },
+  "limits": { "max_span_days": 1830, "max_groups": 60, "max_calls_per_question": 2 }
+}

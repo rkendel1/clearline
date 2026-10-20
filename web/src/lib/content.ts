@@ -26,7 +26,7 @@ export function useContent() {
 }
 
 // ---- destinations: every link the assistant or a citation can produce maps through this fixed table.
-export type Dest = { kind: 'component' | 'decision' | 'capability' | 'actor'; id: string } | { kind: 'section'; id: string } | { kind: 'source'; path: string } | { kind: 'demo'; view: string } | { kind: 'signin' };
+export type Dest = { kind: 'component' | 'decision' | 'capability' | 'actor'; id: string } | { kind: 'section'; id: string } | { kind: 'source'; path: string } | { kind: 'evidence'; id: string } | { kind: 'demo'; view: string } | { kind: 'signin' };
 const SECTIONS = ['why', 'architecture', 'capabilities', 'actors', 'decisions', 'scenarios', 'limits'];
 const DEMO_VIEWS = ['', 'batches', 'exceptions', 'records', 'lineage', 'extracts', 'query', 'history', 'saved', 'runs', 'notifications', 'destinations', 'contracts', 'metrics', 'fields', 'audit'];
 
@@ -39,7 +39,9 @@ export function destHref(d: Dest): string | null {
     case 'actor': return `${base}?s=actors&actor=${encodeURIComponent(d.id)}`;
     case 'section': return SECTIONS.includes(d.id) ? `${base}?s=${d.id}` : null;
     case 'source': return /^(README\.md|docs\/[A-Za-z0-9_./-]+\.md)$/.test(d.path) && !d.path.includes('..') ? `#/source?path=${encodeURIComponent(d.path)}` : null;
+    case 'evidence': return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(d.id) ? `#/evidence?id=${d.id}` : null;
     case 'demo': return session.token && DEMO_VIEWS.includes(d.view) ? `#/${d.view}` : '#/signin';
     case 'signin': return session.token ? '#/' : '#/signin';
+    default: return null;     // a destination kind this table does not know is never linked
   }
 }

@@ -129,6 +129,25 @@ Suggested alerts: `clearline_analytics_oldest_due_seconds > 300` (scheduler not 
 
 Email: `EMAIL_PROVIDER=none` (default) makes email deliveries fail permanently with `email_not_configured`; configure `smtp` with `SMTP_URL` (STARTTLS or `smtps://`) and `EMAIL_FROM`. Webhooks to private addresses are refused unless `WEBHOOK_ALLOW_PRIVATE=true`, which is rejected at startup in production.
 
+## Assistant (public walkthrough and data answers)
+
+- **Build or refresh the index** after changing documents or `content/`: `docker compose run --rm index` (or `npm run assistant:index`). It is incremental: unchanged chunks are not re-embedded, changed ones are replaced, chunks whose source is gone are removed. `GET /api/public/assistant/status` shows the embedder, model, chunk count and corpus version.
+- **Change the embedding model**: set `EMBEDDING_PROVIDER`, then `npm run assistant:index -- --rebuild`. Without `--rebuild` the indexer refuses (`model_mismatch`); vectors from different models are never mixed.
+- **Anonymous data answers**: enabled only by `ASSISTANT_PUBLIC_DATA_TENANT` (compose sets it to the synthetic demo tenant). Unset it anywhere real data could exist.
+- **Model**: `ANTHROPIC_API_KEY` in `.env.local` enables model-written answers; absent, answers are labelled excerpts and data answers are unaffected (their figures never come from a model).
+
+What a visitor sees when something fails (the assistant never substitutes a guess):
+
+| Situation | Behaviour | Where to look |
+|---|---|---|
+| Index not built, pgvector missing or the embedding model mismatches | "I cannot search the architecture documents at the moment, so I will not answer from memory"; signed-in users also see the reason | `clearline_assistant_errors_total{subsystem="index_*"}`, status endpoint |
+| No relevant documents (best similarity below `ASSISTANT_MIN_SCORE`) | Declines and lists what it can answer | `clearline_assistant_requests_total{mode="declined"}` |
+| Model provider unavailable or does not cite sources | Excerpts from the sources, with a notice | `clearline_assistant_errors_total{subsystem="model"}` |
+| Data tool rejected the arguments or the role may not see the data | "I could not complete that calculation: ... I will not estimate or guess a figure." | `clearline_assistant_tool_calls_total{outcome=...}`, audit action `assistant.tool` |
+| Data query timed out or failed | The same, with no figure | audit action `query.execution.*`, `clearline_assistant_tool_seconds` |
+| Rate limited | HTTP 429 with `Retry-After` | `clearline_assistant_rate_limited_total` |
+| Anonymous data not enabled | "not enabled for anonymous visitors" | `/api/public/assistant/status` `data_tools.public_enabled` |
+
 ## Reset a local environment
 
 `docker compose down -v && docker compose up -d && docker compose run --rm demo`. This deletes all data, including the volume.

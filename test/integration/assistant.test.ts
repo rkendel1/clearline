@@ -78,23 +78,22 @@ test('grounded answers: cited, extractive when no model is configured, every des
   for (const c of r.citations) assert.ok(r.answer.includes(`[${c.n}]`), 'every citation is referenced in the answer text');
 });
 
-test('unsupported, data and interpretation questions are declined, never answered from prose', async (t) => {
+test('unsupported questions are declined, and data or interpretation questions are never answered from documentation', async (t) => {
   if (skip(t)) return;
   const none = await ask({ message: 'What is the best pizza topping for a birthday party?', history: [], context: {}, audience: 'public' });
   assert.equal(none.mode, 'declined'); assert.equal(none.citations.length, 0); assert.doesNotMatch(none.answer, /\d{2,}/);
+  // No public data tenant is configured in this suite: anonymous data questions are declined, with no figure and no retrieval.
   const data = await ask({ message: 'How many claims were rejected last month?', history: [], context: {}, audience: 'public' });
-  assert.equal(data.category, 'data'); assert.equal(data.mode, 'declined'); assert.match(data.answer, /not built yet|planned/i); assert.equal(data.evidence.retrieved, 0);
-  const authedData = await ask({ message: 'What is the total paid amount last month?', history: [], context: {}, audience: 'authenticated' });
-  assert.ok(authedData.actions.some((a) => a.dest.kind === 'demo' && (a.dest as { view: string }).view === 'query'));
+  assert.equal(data.category, 'data'); assert.equal(data.mode, 'declined'); assert.match(data.answer, /not enabled for anonymous/); assert.equal(data.evidence.retrieved, 0); assert.doesNotMatch(data.answer, /\$\d|\*\*\d/);
   const interp = await ask({ message: 'Is this change unusual?', history: [], context: {}, audience: 'public' });
   assert.equal(interp.category, 'interpretation'); assert.equal(interp.mode, 'declined');
 });
 
-test('capability status questions are answered from the recorded status, not upgraded', async (t) => {
+test('capability status questions are answered from the recorded status, never upgraded to verified', async (t) => {
   if (skip(t)) return;
-  const r = await ask({ message: 'Can the assistant answer questions about current claim totals? Is that capability planned?', history: [], context: {}, audience: 'public' });
+  const r = await ask({ message: 'Can the assistant answer questions about current claim totals? What is the status of that capability?', history: [], context: {}, audience: 'public' });
   assert.ok(r.citations.some((c) => c.id.includes('assistant-data-tools') || c.id.includes('adr/0018')), r.citations.map((c) => c.id).join(','));
-  assert.match(r.answer, /Planned|not built|planned/i);
+  assert.match(r.answer, /verification incomplete|Implemented|implemented/i);
 });
 
 test('prompt injection in an indexed document cannot change the answer mode, add destinations, or widen access', async (t) => {

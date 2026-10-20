@@ -62,6 +62,7 @@ const route = (method: RouteDef['method'], url: string, perm: RouteDef['perm'], 
 route('GET', '/api/public/content', null, 'The architecture content model: components, diagram, capabilities with evidence-based status, decisions, actors and limitations.', async () => assistantHandlers.content());
 route('GET', '/api/public/assistant/status', null, 'Assistant status: retrieval index (embedder, model, corpus version), answer mode (model or extractive) and limits.', async () => assistantHandlers.status());
 route('GET', '/api/public/source', null, 'An approved source document for a citation. Query: path. Documents classified for signed-in users need an Authorization header.', async (r) => assistantHandlers.source(r));
+route('GET', '/api/public/assistant/evidence', null, 'The recorded computation behind a data answer. Query: id. Anonymous answers are readable by their id; signed-in answers only by the identity that asked.', async (r) => assistantHandlers.evidence(r));
 route('POST', '/api/public/assistant/ask', null, 'Ask the grounded assistant. Body: {message, history?, context?}. Retrieval over approved documents; an Authorization header widens it to documents for signed-in users. Rate limited.', async (r, rep) => assistantHandlers.ask(r, rep));
 
 // ---- identity & platform administration

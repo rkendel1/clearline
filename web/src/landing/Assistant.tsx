@@ -8,8 +8,9 @@ import { type AssistantContext, onOpenAssistant } from './assistantBus';
 
 interface Citation { n: number; id: string; title: string; heading: string; dest: Dest; score: number }
 interface Action { label: string; dest: Dest }
-interface Turn { role: 'user' | 'assistant'; text: string; mode?: string; category?: string; citations?: Citation[]; actions?: Action[]; notice?: string; evidence?: { retrieved: number; used: number; embedder?: string; model?: string; corpus_version?: string } }
-interface Status { retrieval: { available: boolean; chunk_count?: number; embedder?: string; model?: string }; generator: { mode: 'model' | 'extractive'; model?: string } }
+interface ToolSummary { id: string; tool: string; title: string; computed_at: string; execution_id?: string; row_count: number; qualifications: string[] }
+interface Turn { role: 'user' | 'assistant'; text: string; mode?: string; category?: string; citations?: Citation[]; actions?: Action[]; tools?: ToolSummary[]; notice?: string; evidence?: { retrieved: number; used: number; embedder?: string; model?: string; corpus_version?: string } }
+interface Status { retrieval: { available: boolean; chunk_count?: number; embedder?: string; model?: string }; generator: { mode: 'model' | 'extractive'; model?: string }; data_tools?: { public_enabled: boolean; authenticated: boolean } }
 
 const SUGGESTED = [
   'Explain the architecture from ingestion to reporting.',
@@ -21,10 +22,11 @@ const SUGGESTED = [
   'Show me an example of anomaly detection.',
   'What would need to change to support a larger healthcare platform?',
 ];
-const MODE_LABEL: Record<string, string> = { model: 'Written by a language model from the cited sources', extractive: 'Excerpts from the cited sources (no language model)', declined: 'Not answered', unavailable: 'Unavailable' };
+const DATA_SUGGESTED = ['What was the total paid amount last month?', 'Compare paid amounts for the last 30 days with the 30 days before.', 'What is the exception rate?', 'Is reconciliation passing right now?'];
+const MODE_LABEL: Record<string, string> = { model: 'Written by a language model from the cited sources', extractive: 'Excerpts from the cited sources (no language model)', computed: 'Computed by a validated query; the figures are not written by a language model', declined: 'Not answered', unavailable: 'Unavailable' };
 
 /** Persistent assistant: a launcher and a side panel available on every screen. History lives for the browser session only; nothing is stored on the server. */
-export function Assistant({ view }: { view?: string }) {
+export function Assistant({ view, run }: { view?: string; run?: string }) {
   const route = useRoute();
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -43,6 +45,7 @@ export function Assistant({ view }: { view?: string }) {
     capability: extra.capability ?? q.get('capability') ?? undefined,
     decision: extra.decision ?? q.get('decision') ?? undefined,
     view: view ?? extra.view,
+    run: run ?? extra.run,
   };
   const ctxLabel = context.component ? `Component: ${names?.components.find((x) => x.id === context.component)?.name ?? context.component}`
     : context.capability ? `Capability: ${names?.capabilities.find((x) => x.id === context.capability)?.name ?? context.capability}`
@@ -64,7 +67,7 @@ export function Assistant({ view }: { view?: string }) {
     setBusy(true);
     try {
       const r = await request<Omit<Turn, 'role' | 'text'> & { answer: string }>('POST', '/api/public/assistant/ask', { message, history, context: { ...ctx, page: session.token ? 'app' : 'landing' } });
-      setTurns((t) => [...t, { role: 'assistant', text: r.answer, mode: r.mode, category: r.category, citations: r.citations, actions: r.actions, notice: r.notice, evidence: r.evidence }]);
+      setTurns((t) => [...t, { role: 'assistant', text: r.answer, mode: r.mode, category: r.category, citations: r.citations, actions: r.actions, tools: r.tools, notice: r.notice, evidence: r.evidence }]);
     } catch (e) {
       const err = e as ApiError;
       setTurns((t) => [...t, { role: 'assistant', mode: 'unavailable', text: err.code === 'rate_limited' ? err.message : err.status === 0 ? 'I cannot reach the Clearline server right now.' : `The assistant could not answer (${err.code}).` }]);
@@ -80,10 +83,10 @@ export function Assistant({ view }: { view?: string }) {
         {!turns.length && (
           <div className="ask-intro">
             <p>I can explain Clearline's architecture, design decisions, data flows, security controls and demonstration scenarios. Ask me why a decision was made, how a metric is defined, or what happens when a workflow fails.</p>
-            <p className="muted small">I answer from approved documentation and cite it. I cannot yet answer questions about current values in the demo data: those need validated data tools, which are planned. Use the query workspace for them.</p>
+            <p className="muted small">I answer from approved documentation and cite it. For questions about the demo data I use validated, read-only calculations and show the evidence behind every figure; I never take a number from documentation.</p>
             {status && !status.retrieval.available && <p className="note warn small">Document search is not available on this server yet, so I cannot answer reliably.</p>}
             {status && status.generator.mode === 'extractive' && <p className="muted small">No language model is configured here: answers will be excerpts from the sources.</p>}
-            <div className="suggest">{SUGGESTED.map((s) => <button key={s} className="chip" onClick={() => send(s)}>{s}</button>)}</div>
+            <div className="suggest">{[...SUGGESTED, ...(status?.data_tools && (status.data_tools.public_enabled || session.token) ? DATA_SUGGESTED : [])].map((s) => <button key={s} className="chip" onClick={() => send(s)}>{s}</button>)}</div>
           </div>)}
         {turns.map((t, i) => (
           <div key={i} className={`turn ${t.role}`}>
@@ -95,6 +98,9 @@ export function Assistant({ view }: { view?: string }) {
                 {t.citations && t.citations.length > 0 && (
                   <details open><summary className="small">Sources ({t.citations.length})</summary>
                     <ol className="cites">{t.citations.map((c) => { const h = destHref(c.dest); return <li key={c.n}>{h ? <Link to={h} className="small" onClick={() => setOpen(false)}><span id={`cite-${i}-${c.n}`} tabIndex={-1}>[{c.n}] {c.title}</span></Link> : <span className="small">[{c.n}] {c.title}</span>}<span className="muted small"> · {c.heading}</span></li>; })}</ol></details>)}
+                {t.tools && t.tools.length > 0 && (
+                  <details open><summary className="small">Computation ({t.tools.length})</summary>
+                    <ul className="cites">{t.tools.map((x) => <li key={x.id} className="small"><Link to={destHref({ kind: 'evidence', id: x.id })!} onClick={() => setOpen(false)}>{x.title}</Link><span className="muted"> · {x.row_count} row(s) · {new Date(x.computed_at).toLocaleTimeString()}{x.execution_id ? ` · execution ${x.execution_id.slice(0, 8)}` : ''}</span></li>)}</ul></details>)}
                 {t.actions && t.actions.length > 0 && <div className="row actions">{t.actions.map((a, k) => { const h = destHref(a.dest); return h ? <Link key={k} to={h} className="chip" onClick={() => setOpen(false)}>{a.label}</Link> : null; })}</div>}
               </>)}
           </div>))}

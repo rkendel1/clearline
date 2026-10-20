@@ -109,6 +109,34 @@ const MUTATIONS: Mutation[] = [
   { id: 'notifications-not-recipient-scoped', protects: 'users see only their own notifications',
     file: 'src/delivery/inbox.ts', find: 'WHERE n.tenant_id = $1 AND n.recipient = $2 AND', replace: 'WHERE n.tenant_id = $1 AND $2::text IS NOT NULL AND',
     tests: ['test/scenarios/r-delivery.test.ts'] },
+  // ---- public assistant and data tools (need a PostgreSQL with pgvector for the retrieval tests, or they skip and the mutation survives)
+  { id: 'assistant-access-filter-removed', protects: 'anonymous retrieval never returns documents classified for signed-in users',
+    file: 'src/assistant/store.ts', find: 'WHERE access = ANY($2::text[]) ORDER BY', replace: 'WHERE ($2::text[] IS NOT NULL) ORDER BY',
+    tests: ['test/integration/assistant.test.ts'] },
+  { id: 'assistant-restricted-source-served', protects: 'documents classified for signed-in users are not served to anonymous callers',
+    file: 'src/assistant/routes.ts', find: "if (hit.access === 'authenticated' && (await audience(req)) !== 'authenticated')", replace: 'if (false)',
+    tests: ['test/integration/assistant.test.ts'] },
+  { id: 'assistant-destinations-unvalidated', protects: 'the assistant can only link to known destinations, never an arbitrary URL or path',
+    file: 'src/assistant/answer.ts', find: '    default: return false;      // anything the model or a document names that is not a known destination kind', replace: '    default: return true;',
+    tests: ['test/unit/assistant.test.ts', 'test/integration/assistant.test.ts'] },
+  { id: 'data-tool-extra-arguments-allowed', protects: 'data tools reject unknown arguments (no SQL, tenant or role can be smuggled in)',
+    file: 'src/assistant/tools.ts', find: "  for (const k of Object.keys(args)) if (!allowed.includes(k)) throw new ToolError('invalid_arguments', `unknown argument \"${k}\"`);", replace: '',
+    tests: ['test/integration/assistant-data.test.ts'] },
+  { id: 'data-tool-signed-in-only-check-removed', protects: 'anonymous callers cannot use the signed-in-only tools (runs and insights)',
+    file: 'src/assistant/tools.ts', find: "if (tool.authenticatedOnly && ctx.audience !== 'authenticated') throw fail(", replace: 'if (false) throw fail(',
+    tests: ['test/integration/assistant-data.test.ts'] },
+  { id: 'public-identity-escalated', protects: 'anonymous data answers run as the least-privileged role',
+    file: 'src/assistant/tools.ts', find: "role: (process.env.ASSISTANT_PUBLIC_DATA_ROLE ?? 'reporter')", replace: "role: (process.env.ASSISTANT_PUBLIC_DATA_ROLE ?? 'admin')",
+    tests: ['test/integration/assistant-data.test.ts'] },
+  { id: 'evidence-readable-by-anyone', protects: 'evidence of a signed-in answer is readable only by the identity that asked',
+    file: 'src/assistant/tools.ts', find: 'return viewer && viewer.tenantId === row.tenant_id && viewer.actor === row.actor ? (row.evidence as Evidence) : null;', replace: 'return row.evidence as Evidence;',
+    tests: ['test/integration/assistant-data.test.ts'] },
+  { id: 'untrusted-value-reported-as-current', protects: 'the figure in a data answer is the trusted value, not the including-untrusted one',
+    file: 'src/assistant/data.ts', find: "lines.push(`**${m!.title}** is **${fmt(value, unit)}** over trusted data (all time).`);", replace: "lines.push(`**${m!.title}** is **${fmt(incl, unit)}** over trusted data (all time).`);",
+    tests: ['test/integration/assistant-data.test.ts'] },
+  { id: 'data-question-rate-limit-removed', protects: 'data questions have their own tighter rate limit',
+    file: 'src/assistant/routes.ts', find: "if (cat === 'data' || cat === 'interpretation') {", replace: 'if (false) {',
+    tests: ['test/integration/assistant-data.test.ts'] },
 ];
 
 const only = process.argv[2];
@@ -123,7 +151,8 @@ for (const m of MUTATIONS.filter((x) => !only || x.id === only)) {
   if (!src.includes(m.find)) throw new Error(`mutation ${m.id}: target text not found in ${m.file} (update the mutation)`);
   writeFileSync(f, src.replace(m.find, m.replace));
   const t0 = Date.now();
-  const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', '--test-concurrency=1', ...m.tests], {
+  // The parser below reads TAP; newer Node versions default to another reporter when output is piped.
+  const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', '--test-concurrency=1', '--test-reporter=tap', ...m.tests], {
     cwd: dir, encoding: 'utf8', env: { ...process.env, TEST_DATABASE_NAME: 'clearline_mut', LOG_LEVEL: 'error' }, timeout: 300_000 });
   const out = (r.stdout ?? '') + (r.stderr ?? '');
   const failing = [...out.matchAll(/^not ok \d+ - (.+)$/gm)].map((x) => x[1]);

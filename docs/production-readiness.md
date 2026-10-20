@@ -144,7 +144,14 @@ Added after the recorded results at commit `dc06c95`; their evidence is smaller 
 | Grounded assistant: retrieval over an approved corpus, citations, extractive fallback, declines without evidence | Tested | `test/unit/assistant.test.ts`; `test/integration/assistant.test.ts` (needs pgvector); retrieval evaluation in [assistant-evaluation.md](assistant-evaluation.md) |
 | Public/authenticated document classes; restricted documents not retrievable or servable anonymously | Tested | `test/unit/assistant.test.ts`, `test/integration/assistant.test.ts` |
 | Rate limiting of the assistant (per client and global) | Tested (unit); in-memory per process | Not shared across API replicas |
-| Assistant data tools (questions about current values) | **Missing** (planned, ADR 0018) | The assistant declines such questions |
+| Assistant data tools: metric current value, by period, period comparison, quality, reconciliation; signed-in runs and insights | Tested | `test/integration/assistant-data.test.ts` (results equal the generator's integer-cent arithmetic and independent SQL; evidence and execution ids exist), `test/unit/data-tools.test.ts` (planner against a fixed clock, exact formatting); mutations in `npm run test:mutation` |
+| Data tools cannot run arbitrary SQL or reach other tenants: unknown tools, extra arguments, malformed or out-of-range dates, unknown measures and dimensions rejected; the public identity is least-privileged, confined to the named demo tenant and refused the signed-in-only tools; a field hidden from the role yields no figure | Tested † | `test/integration/assistant-data.test.ts`; mutations `data-tool-extra-arguments-allowed`, `data-tool-signed-in-only-check-removed`, `public-identity-escalated` |
+| Evidence of a signed-in answer is readable only by the identity that asked; anonymous evidence only by its id | Tested † | `test/integration/assistant-data.test.ts`; mutation `evidence-readable-by-anyone` |
+| A failed calculation never yields a figure; failures are audited without values | Tested | `test/integration/assistant-data.test.ts` |
+| End-to-end acceptance in a real browser: first-time visitor, public data question with evidence, tradeoff answer, unsupported question, public access boundary, mobile | Tested | `test/e2e/assistant-web.test.ts` (scenarios A to E; Chromium via Playwright; two planted defects confirmed caught) |
+| Rendering of assistant text and destination links | Tested | `web/src/landing/Markdown.test.tsx`, `web/src/lib/content.test.ts` (no markup, no links, no unknown destinations) |
+| Live model planning and live model answers | **Unverified in automated tests** | Exercised manually with a configured key; the suites use no model |
+| Anonymous data answers with several API replicas or behind a proxy | **Unverified** | Rate limits are per process and per client address; see the threat model |
 | Live model answers | **Unverified in automated tests** | Exercised manually with a configured key; tests use no model |
 
 ## Reporting

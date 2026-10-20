@@ -7,7 +7,10 @@ import { loadContent, type Content } from './content.js';
 import { classify, type Category } from './router.js';
 import { getEmbedder, tokenize, type Embedder } from './embed.js';
 import { IndexUnavailable, indexMeta, search, type Hit } from './store.js';
-import type { Access, Dest } from './corpus.js';
+import type { Access, Dest as CorpusDest } from './corpus.js';
+import type { Principal } from '../control/auth.js';
+import { answerData, type ToolSummary } from './data.js';
+type Dest = CorpusDest | { kind: 'evidence'; id: string };
 import { getPool } from '../platform/db.js';
 import { log } from '../platform/logger.js';
 import { metrics } from '../platform/metrics.js';
@@ -17,13 +20,16 @@ export const DEMO_VIEWS = ['', 'batches', 'exceptions', 'records', 'lineage', 'e
 export interface AskInput {
   message: string;
   history: { role: 'user' | 'assistant'; text: string }[];
-  context: { page?: string; component?: string; capability?: string; decision?: string; view?: string };
+  context: { page?: string; component?: string; capability?: string; decision?: string; view?: string; run?: string };
   audience: 'public' | 'authenticated';
+  /** Set only for a verified token; the assistant never trusts a claimed identity. */
+  principal?: Principal;
+  correlationId?: string;
 }
 export interface Citation { n: number; id: string; title: string; heading: string; dest: Dest; score: number; access: Access }
 export interface Action { label: string; dest: Dest | { kind: 'demo'; view: string } | { kind: 'signin' } }
 export interface AskResult {
-  answer: string; mode: 'model' | 'extractive' | 'declined' | 'unavailable'; category: Category; citations: Citation[]; actions: Action[];
+  answer: string; mode: 'model' | 'extractive' | 'computed' | 'declined' | 'unavailable'; category: Category; citations: Citation[]; actions: Action[]; tools?: ToolSummary[];
   evidence: { retrieved: number; used: number; embedder?: string; model?: string; corpus_version?: string; best_score?: number };
   notice?: string;
 }
@@ -47,6 +53,7 @@ export function validDest(d: Dest, c: Content = loadContent()): boolean {
     case 'capability': return c.capabilities.some((x) => x.id === d.id);
     case 'actor': return c.actors.some((x) => x.id === d.id);
     case 'section': return ['why', 'architecture', 'capabilities', 'actors', 'decisions', 'scenarios', 'limits'].includes(d.id);
+    case 'evidence': return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(d.id);
     case 'source': return /^(README\.md|docs\/[A-Za-z0-9_./-]+\.md)$/.test(d.path) && !d.path.includes('..');
     default: return false;      // anything the model or a document names that is not a known destination kind
   }
@@ -60,6 +67,7 @@ const label = (d: Dest, c: Content): string => {
     case 'actor': return `Use case: ${c.actors.find((x) => x.id === d.id)?.name}`;
     case 'section': return `Section: ${d.id}`;
     case 'source': return `Source: ${d.path}`;
+    case 'evidence': return 'Evidence for this answer';
   }
 };
 
@@ -129,21 +137,18 @@ async function modelAnswer(i: AskInput, hits: Hit[], c: Content): Promise<string
   return res.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('').trim();
 }
 
-function declined(category: Category, i: AskInput): AskResult {
-  const view = i.audience === 'authenticated';
-  const answer = category === 'data'
-    ? `That needs a calculation over the demo data, and the assistant's validated data tools are not built yet (they are planned), so I will not answer it from documentation. ${view ? 'The query workspace answers it today: it validates the SQL for your role and runs it explicitly.' : 'Sign in to the demo and use the query workspace, which validates SQL for your role and runs it explicitly.'}`
-    : `Interpreting a specific result needs that result's data and run evidence, which the assistant cannot read yet. I can explain how the analyses work, what they assume and what they cannot show. ${view ? 'Open the run in Run history for its evidence.' : 'Sign in to inspect runs and their evidence.'}`;
-  const actions: Action[] = view ? [{ label: 'Open the query workspace', dest: { kind: 'demo', view: category === 'data' ? 'query' : 'runs' } }] : [{ label: 'Open the demo', dest: { kind: 'signin' } }];
-  return { answer, mode: 'declined', category, citations: [], actions, evidence: { retrieved: 0, used: 0 } };
-}
-
 export async function ask(i: AskInput, embedder: Embedder = getEmbedder()): Promise<AskResult> {
   const c = loadContent();
   const category = classify(i.message);
   const lim = limits();
   const done = (r: AskResult) => { metrics.assistantRequests.inc({ category, mode: r.mode, audience: i.audience }); return r; };
-  if (category === 'data' || category === 'interpretation') return done(declined(category, i));
+  if (category === 'data' || category === 'interpretation') {
+    const r = await answerData({ question: i.message, category, audience: i.audience, principal: i.principal, correlationId: i.correlationId ?? 'assistant', runId: i.context.run });
+    const actions: Action[] = r.tools.slice(0, 2).map((t) => ({ label: `Evidence: ${t.title}`.slice(0, 90), dest: { kind: 'evidence' as const, id: t.id } }));
+    if (i.audience === 'authenticated') actions.push({ label: 'Open the query workspace', dest: { kind: 'demo', view: 'query' } }); else actions.push({ label: 'Open the demo', dest: { kind: 'signin' } });
+    const citations: Citation[] = r.tools.some((t) => t.measure) ? [{ n: 1, id: 'docs/metrics.md', title: 'Metric definitions', heading: 'How tenant-declared metrics are computed', dest: { kind: 'source', path: 'docs/metrics.md' }, score: 1, access: 'public' }] : [];
+    return done({ answer: r.answer, mode: r.mode, category, citations, actions, tools: r.tools, evidence: { retrieved: 0, used: 0 }, notice: r.notice });
+  }
 
   const access: Access[] = i.audience === 'authenticated' ? ['public', 'authenticated'] : ['public'];
   let hits: Hit[];

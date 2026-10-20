@@ -1,6 +1,6 @@
 // Tiny event bus so any page can open the assistant with a page context and an optional prefilled question,
 // without coupling components to the assistant's state.
-export interface AssistantContext { component?: string; capability?: string; decision?: string; view?: string }
+export interface AssistantContext { component?: string; capability?: string; decision?: string; view?: string; run?: string }
 export interface OpenRequest { context: AssistantContext; question?: string }
 const EVT = 'clearline:assistant-open';
 export function openAssistant(context: AssistantContext = {}, question?: string) { window.dispatchEvent(new CustomEvent<OpenRequest>(EVT, { detail: { context, question } })); }

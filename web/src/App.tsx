@@ -26,6 +26,7 @@ import type { Notifications as NotificationList } from './types';
 import { Note } from './ui';
 import { Landing } from './landing/Landing';
 import { Source } from './landing/Source';
+import { EvidencePage } from './landing/EvidencePage';
 import { Assistant } from './landing/Assistant';
 import { useRoute as useHashRoute } from './lib/router';
 
@@ -46,7 +47,7 @@ function Public({ expired, onSignedIn }: { expired: boolean; onSignedIn: (m: Me)
   const page = r.path[0];
   return (
     <>
-      {page === 'signin' || expired ? <SignIn expired={expired} onSignedIn={onSignedIn} /> : page === 'source' ? <Source /> : <Landing />}
+      {page === 'signin' || expired ? <SignIn expired={expired} onSignedIn={onSignedIn} /> : page === 'source' ? <Source /> : page === 'evidence' ? <EvidencePage /> : <Landing />}
       <Assistant />
     </>
   );
@@ -113,14 +114,14 @@ function Shell({ me, onSignOut }: { me: Me; onSignOut: () => void }) {
         </div>
       </nav>
       <main className="main" id="main">
-        {route.path[0] === 'about' ? <Landing embedded /> : route.path[0] === 'source' ? <Source /> :
+        {route.path[0] === 'about' ? <Landing embedded /> : route.path[0] === 'source' ? <Source /> : route.path[0] === 'evidence' ? <EvidencePage /> :
           platform && route.path[0] === 'platform' ? <Platform /> :
           current ? current.render() :
           route.path[0] && route.path[0] !== '' ? <Note tone="warn">There is nothing at <code>#{route.path.join('/')}</code>, or your role cannot see it.</Note> :
           fallback ? fallback.render() :
           platform ? <Platform /> : <Note tone="warn">This token has no permissions to view data in the web interface.</Note>}
       </main>
-      <Assistant view={route.path[0] ?? ''} />
+      <Assistant view={route.path[0] ?? ''} run={route.path[0] === 'runs' && /^[0-9a-f-]{36}$/.test(route.path[1] ?? '') ? route.path[1] : undefined} />
     </div>
   );
 }

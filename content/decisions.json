@@ -193,7 +193,7 @@
       ],
       "rationale_note": "Current rationale (the original deliberation was not recorded; this documents the reasoning that supports the present design).",
       "context": "The assistant must explain the design (prose) and, later, report values (exact data). These need different mechanisms.",
-      "decision": "Vector retrieval over an approved, versioned corpus finds the relevant explanation; it is never the source of a current number. Facts such as totals, counts, run status and authorization come from the authoritative database through validated tools (planned) or the existing governed SQL path. The vector index lives in the same PostgreSQL (pgvector) with a local embedding model; no second database.",
+      "decision": "Vector retrieval over an approved, versioned corpus finds the relevant explanation; it is never the source of a current number. Facts such as totals, counts, run status and authorization come from the authoritative database through validated data tools that reuse the existing governed query path. The vector index lives in the same PostgreSQL (pgvector) with a local embedding model; no second database.",
       "alternatives": [
         "A dedicated vector database",
         "Hosted embeddings",
@@ -208,11 +208,13 @@
       "costs": [
         "A small local model has lower retrieval quality than a large hosted one.",
         "pgvector image build adds a compile step to the database image.",
-        "Indexing is a separate step that must be run after content changes."
+        "Indexing is a separate step that must be run after content changes.",
+        "The data tools cover a fixed set of operations; other questions are declined."
       ],
       "risks": [
-        "Prompt injection in retrieved text: it is treated as untrusted data, the assistant has no tools in this release, and output is rendered as text.",
-        "Stale index: content hashes are tracked and the status endpoint reports the indexed version."
+        "Prompt injection in retrieved text: it is treated as untrusted data, retrieval has no tools, the data tools take validated arguments only (the model never writes SQL or figures), and output is rendered as text.",
+        "Stale index: content hashes are tracked and the status endpoint reports the indexed version.",
+        "Anonymous data access: confined to one named synthetic tenant, a least-privileged role and aggregate templates, with its own rate limit."
       ],
       "revisit_when": "Retrieval recall on the evaluation set is too low, the corpus outgrows pgvector, or per-tenant private corpora are needed.",
       "implementation_evidence": [

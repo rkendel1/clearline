@@ -19,4 +19,4 @@
 | [0015](0015-durable-scheduler.md) | Durable scheduling in PostgreSQL, executed by the worker | Accepted |
 | [0016](0016-deterministic-analysis.md) | Deterministic, explainable analysis first; models may only narrate | Accepted |
 | [0017](0017-web-interface.md) | A web interface beside the native client, served by the API | Accepted |
-| [0018](0018-grounded-assistant.md) | A grounded assistant: retrieval for explanation, validated tools for facts | Accepted (retrieval built; data tools planned) |
+| [0018](0018-grounded-assistant.md) | A grounded assistant: retrieval for explanation, validated tools for facts | Accepted (retrieval and data tools built) |

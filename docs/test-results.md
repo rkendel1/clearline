@@ -66,3 +66,22 @@ Each mutation plants one realistic defect in a temporary copy, runs the tests th
 - **Real mail relay and remote webhook endpoints**: email was exercised against a local SMTP receiver and webhooks against a loopback receiver.
 - **macOS and Windows builds** of the native client, and rendering with a GPU (only software Vulkan was measured).
 - See [production-readiness.md](production-readiness.md) for the full list: freshness thresholds, the attempt limit on repeated SIGTERM, checksum-mismatch detection for edited migrations, scale beyond the benchmark, multi-instance and multi-day operation.
+
+## Later additions: web interface, public walkthrough and assistant
+
+Everything above was recorded from one clean clone at commit `dc06c95`. The web client, the public landing page and the assistant were added afterwards and are **not** part of that recorded run. They were run from a development checkout (not a clean clone, and not yet committed) on macOS (arm64), Node.js 24.9, against a CI-equivalent PostgreSQL: the `pgvector/pgvector:pg16` image with a non-superuser `clearline` role that has only `CREATEROLE` (the Docker Compose database role is a superuser, which bypasses row-level security, and scenarios G, J and T3 fail against it for that reason).
+
+| Check | Command | Result |
+|---|---|---|
+| Typecheck (API and web) | `npm run typecheck`; `npx tsc --noEmit` in `web/` | pass |
+| Unit tests | `npm run test:unit` | **93 / 93** (new: content model, assistant building blocks, planner and data formatting, web hosting) |
+| Integration tests | `npm run test:integration` | **34 / 34** (13 existing; 9 retrieval and boundary tests; 12 data-tool tests compared with generator arithmetic and independent SQL) |
+| Scenarios A to T | `npm run test:scenarios` | **39 / 39** (unchanged by the additions) |
+| Web unit tests | `npm test --prefix web` | **7 / 7** (assistant text cannot render as markup or links; destinations are validated) |
+| Web end-to-end (Chromium, real API and data) | `npm run test:e2e:web` | **6 / 6**: acceptance scenarios A to E from the assistant specification plus a mobile check. A planted wrong-figure defect and a planted access-control defect were each confirmed to fail them |
+| Mutation checks | `npm run test:mutation` | **40 / 40 planted defects caught** (the 31 recorded earlier plus 9 for the assistant). One of the 9 first survived because the fixtures had no untrusted batch; a test was added and it is now caught. The runner was also fixed to request TAP output: on Node 24 it defaulted to another reporter when piped, so no failure was ever detected |
+| Dependency audit | `npm audit --omit=dev --audit-level=high` | 0 vulnerabilities |
+| Retrieval evaluation | `npm run assistant:eval` | see [assistant-evaluation.md](assistant-evaluation.md): measured on a small question set; recall is high for questions near the documents' vocabulary and lower for paraphrases |
+
+Not covered by these results: the native client suites (not re-run), live Anthropic answers and live model tool selection (the suites run without a key; the live path was exercised manually only), several API replicas or a proxy in front (rate limits are per process and client address), and a clean-clone run of any of the above.
+

@@ -111,8 +111,8 @@
     {
       "from": "assistant",
       "to": "datatools",
-      "kind": "planned",
-      "label": "Planned: validated data operations"
+      "kind": "sync",
+      "label": "Validated data operations"
     },
     {
       "from": "retrieval",
@@ -123,8 +123,14 @@
     {
       "from": "datatools",
       "to": "query",
-      "kind": "planned",
-      "label": "Planned: reuse the validated query path"
+      "kind": "sync",
+      "label": "Same governed path as a user query"
+    },
+    {
+      "from": "datatools",
+      "to": "reporting",
+      "kind": "sync",
+      "label": "Authoritative metric values"
     }
   ],
   "boundaries": [

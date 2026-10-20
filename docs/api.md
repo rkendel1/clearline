@@ -32,6 +32,7 @@ Every response carries `X-Correlation-Id` (send your own to correlate client and
 | GET | `/api/public/content` | public | The architecture content model: components, diagram, capabilities with evidence-based status, decisions, actors and limitations. |
 | GET | `/api/public/assistant/status` | public | Assistant status: retrieval index (embedder, model, corpus version), answer mode (model or extractive) and limits. |
 | GET | `/api/public/source` | public | An approved source document for a citation. Query: path. Documents classified for signed-in users need an Authorization header. |
+| GET | `/api/public/assistant/evidence` | public | The recorded computation behind a data answer. Query: id. Anonymous answers are readable by their id; signed-in answers only by the identity that asked. |
 | POST | `/api/public/assistant/ask` | public | Ask the grounded assistant. Body: {message, history?, context?}. Retrieval over approved documents; an Authorization header widens it to documents for signed-in users. Rate limited. |
 | GET | `/api/v1/me` | any valid token | Describe the calling principal (tenant, role, permissions). |
 | GET | `/api/v1/contract-schema` | public | The formal JSON Schema (2020-12) for tenant contracts. |

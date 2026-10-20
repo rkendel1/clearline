@@ -108,7 +108,10 @@ async function main() {
     '| clearline_rows_processed_total | counter | Rows by tenant and disposition |', '| clearline_batch_processing_seconds | histogram | Claim-to-commit processing time |',
     '| clearline_authorization_denials_total | counter | Denials by reason (invalid_token, missing_permission, cross_tenant) |', '| clearline_backlog_batches | gauge | Queued and processing batches per tenant |',
     '| clearline_oldest_queued_seconds | gauge | Age of the oldest queued batch |', '| clearline_data_freshness_seconds | gauge | Seconds since the last trusted batch per source |',
-    '| clearline_batches | gauge | All-time batches by pipeline status and trust |', '| clearline_workers_live | gauge | Workers with a heartbeat in the last 60 s |', '',
+    '| clearline_batches | gauge | All-time batches by pipeline status and trust |', '| clearline_workers_live | gauge | Workers with a heartbeat in the last 60 s |',
+    '| clearline_assistant_requests_total | counter | Assistant questions by category, answer mode and audience |', '| clearline_assistant_retrieval_seconds | histogram | Assistant embedding and vector search time |', '| clearline_assistant_answer_seconds | histogram | Assistant model answer generation time |',
+    '| clearline_assistant_rate_limited_total | counter | Assistant requests refused by a rate limiter (client, global, data) |', '| clearline_assistant_errors_total | counter | Assistant failures by subsystem (index_not_built, retrieval, model, ...) |',
+    '| clearline_assistant_tool_calls_total | counter | Assistant data tool invocations by tool and outcome (ok, invalid_arguments, not_permitted, timeout, failed, ...) |', '| clearline_assistant_tool_seconds | histogram | Assistant data tool execution time |', '',
     'Counters and histograms are per process (API and each worker expose their own when scraped); gauges are computed from the database at scrape time and are therefore identical on every instance.', '');
   writeFileSync(path.join(ROOT, 'docs/metrics.md'), m.join('\n'));
   console.log('wrote docs/data-dictionary.md and docs/metrics.md');

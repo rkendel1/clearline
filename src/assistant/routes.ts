@@ -3,7 +3,7 @@
 // documents classified for signed-in users and does nothing else (the assistant has no data tools yet).
 
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { authenticate } from '../control/auth.js';
+import { authenticate, type Principal } from '../control/auth.js';
 import { badRequest, AppError, notFound } from '../platform/errors.js';
 import { metrics } from '../platform/metrics.js';
 import { ask, DEMO_VIEWS, generatorInfo, limits, type AskInput } from './answer.js';
@@ -11,13 +11,18 @@ import { loadContent, validateContent } from './content.js';
 import { isApprovedSource, readApprovedSource } from './corpus.js';
 import { getEmbedder } from './embed.js';
 import { RateLimiter } from './limiter.js';
+import { classify } from './router.js';
+import { publicDataEnabled, readEvidence, toolNames } from './tools.js';
 import { indexMeta } from './store.js';
 import { getPool } from '../platform/db.js';
 
 const rate = () => ({ client: Number(process.env.ASSISTANT_RATE_PER_MIN ?? 12), authed: Number(process.env.ASSISTANT_RATE_PER_MIN_AUTH ?? 40), global: Number(process.env.ASSISTANT_RATE_GLOBAL_PER_MIN ?? 300) });
 let publicLimiter: RateLimiter | undefined;
 let authedLimiter: RateLimiter | undefined;
-export const resetLimiters = () => { publicLimiter = undefined; authedLimiter = undefined; };
+let dataLimiter: RateLimiter | undefined;
+let dataAuthedLimiter: RateLimiter | undefined;
+export const resetLimiters = () => { publicLimiter = undefined; authedLimiter = undefined; dataLimiter = undefined; dataAuthedLimiter = undefined; };
+const dataRate = () => ({ client: Number(process.env.ASSISTANT_DATA_PER_MIN ?? 6), authed: Number(process.env.ASSISTANT_DATA_PER_MIN_AUTH ?? 20) });
 
 let validated = false;
 export function publicContent() {
@@ -54,16 +59,17 @@ export function parseAsk(body: unknown): Omit<AskInput, 'audience'> {
       capability: pick('capability', (v) => c.capabilities.some((k) => k.id === v)),
       decision: pick('decision', (v) => c.decisions.some((k) => k.id === v)),
       view: pick('view', (v) => (DEMO_VIEWS as readonly string[]).includes(v)),
+      run: pick('run', (v) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(v)),
     },
   };
 }
 
-async function audience(req: FastifyRequest): Promise<'public' | 'authenticated'> {
+async function identify(req: FastifyRequest): Promise<{ audience: 'public' | 'authenticated'; principal?: Principal }> {
   const h = req.headers.authorization;
-  if (!h) return 'public';
-  await authenticate(h, req.correlationId);       // an invalid or revoked token is a 401, not a silent downgrade
-  return 'authenticated';
+  if (!h) return { audience: 'public' };
+  return { audience: 'authenticated', principal: await authenticate(h, req.correlationId) };   // an invalid or revoked token is a 401, not a silent downgrade
 }
+const audience = async (req: FastifyRequest) => (await identify(req)).audience;
 
 export const assistantHandlers = {
   content: async () => publicContent(),
@@ -75,7 +81,14 @@ export const assistantHandlers = {
     } catch { retrieval = { available: false, reason: 'database' }; }
     const g = generatorInfo();
     const l = limits();
-    return { retrieval, embedder: { configured: getEmbedder().id, model: getEmbedder().model }, generator: g, limits: { max_message_chars: l.maxMessage, retrieval_k: l.k, context_chars: l.contextChars, rate_per_minute: rate().client } };
+    return { retrieval, embedder: { configured: getEmbedder().id, model: getEmbedder().model }, generator: g, data_tools: { public_enabled: publicDataEnabled(), authenticated: true, tools: toolNames() }, limits: { max_message_chars: l.maxMessage, retrieval_k: l.k, context_chars: l.contextChars, rate_per_minute: rate().client, data_questions_per_minute: dataRate().client } };
+  },
+  evidence: async (req: FastifyRequest) => {
+    const id = str((req.query as Record<string, string>).id, 64, 'id');
+    const { principal } = await identify(req);
+    const ev = await readEvidence(id, principal ?? null);
+    if (!ev) throw notFound('evidence');
+    return ev;
   },
   source: async (req: FastifyRequest) => {
     const path = str((req.query as Record<string, string>).path, 200, 'path');
@@ -85,7 +98,7 @@ export const assistantHandlers = {
     return { path, access: hit.access, text: readApprovedSource(path) };
   },
   ask: async (req: FastifyRequest, rep: FastifyReply) => {
-    const aud = await audience(req);
+    const { audience: aud, principal } = await identify(req);
     const r = rate();
     publicLimiter ??= new RateLimiter(r.client, r.global);
     authedLimiter ??= new RateLimiter(r.authed, r.global);
@@ -96,6 +109,20 @@ export const assistantHandlers = {
       rep.header('retry-after', String(ok.retryAfterS));
       throw new AppError(429, 'rate_limited', `Too many assistant requests. Try again in ${ok.retryAfterS} seconds.`);
     }
-    return ask({ ...parseAsk(req.body), audience: aud });
+    const input = parseAsk(req.body);
+    // Data questions cost a database query each, so they get a tighter limit of their own.
+    const cat = classify(input.message);
+    if (cat === 'data' || cat === 'interpretation') {
+      const d = dataRate();
+      dataLimiter ??= new RateLimiter(d.client, r.global);
+      dataAuthedLimiter ??= new RateLimiter(d.authed, r.global);
+      const dk = (aud === 'authenticated' ? dataAuthedLimiter : dataLimiter).check(key);
+      if (!dk.ok) {
+        metrics.assistantRateLimited.inc({ scope: 'data' });
+        rep.header('retry-after', String(dk.retryAfterS));
+        throw new AppError(429, 'rate_limited', `Too many data questions. Try again in ${dk.retryAfterS} seconds.`);
+      }
+    }
+    return ask({ ...input, audience: aud, principal, correlationId: req.correlationId });
   },
 };

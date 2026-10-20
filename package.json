@@ -25,6 +25,7 @@
     "demo": "tsx scripts/demo.ts",
     "benchmark": "tsx scripts/benchmark.ts",
     "test:e2e": "node --import tsx --test --test-concurrency=1 --test-reporter=spec test/e2e/*.test.ts",
+    "test:e2e:web": "node --import tsx --test --test-concurrency=1 --test-reporter=spec test/e2e/assistant-web.test.ts",
     "test:all": "npm test && npm run native:build && npm run test:e2e",
     "docs:api": "tsx scripts/gen-api-docs.ts",
     "docs:examples": "tsx scripts/gen-examples.ts",
@@ -50,6 +51,7 @@
   "devDependencies": {
     "@types/node": "^26.6.5",
     "@types/pg": "^8.23.1",
+    "playwright": "^1.64.1",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
   }

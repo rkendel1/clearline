@@ -88,31 +88,34 @@
     "id": "assistant",
     "name": "Ask Clearline assistant",
     "layer": "assistant",
-    "status": "partial",
+    "status": "implemented",
     "layout": {
       "x": 520,
       "y": 92,
       "w": 460,
       "h": 64
     },
-    "summary": "Answers questions about the design, capabilities and evidence, with citations. Structured data tools are planned.",
-    "responsibility": "Routes a question to retrieval over the approved corpus, builds a grounded answer (model-written if a provider is configured, extractive otherwise) and returns citations and navigation actions. It never executes SQL.",
+    "summary": "Answers questions about the design, capabilities and evidence with citations, and about demo data through validated tools with recorded evidence.",
+    "responsibility": "Routes a question to retrieval over the approved corpus (design, decisions, capabilities) or to the validated data tools (current values, comparisons, run evidence). Builds a grounded, cited answer, or a computed answer whose figures come only from tool results. It never executes arbitrary SQL.",
     "inputs": [
-      "Question, recent turns, page context"
+      "Question, recent turns, page context",
+      "Verified token (optional)"
     ],
     "outputs": [
-      "Answer, citations, navigation actions"
+      "Answer, citations, navigation actions, data evidence"
     ],
     "dependencies": [
       "retrieval",
-      "provider"
+      "provider",
+      "datatools"
     ],
     "data": "No conversation is stored on the server. Rate-limit counters are in memory.",
     "security": "Public callers retrieve only public chunks. Retrieved text is untrusted data and cannot grant access. Output is rendered as text, links come from a fixed destination table.",
     "failure_modes": [
       "No retrieval index: the assistant says so rather than guessing",
-      "No model configured: extractive answer, labelled as such",
-      "Weak evidence: it declines"
+      "No model configured: extractive answers, labelled as such",
+      "Weak evidence: it declines",
+      "A data tool fails: the answer says so and contains no figure"
     ],
     "why": "A walkthrough that can be questioned must be grounded, otherwise it is a generic chatbot.",
     "decisions": [
@@ -614,31 +617,47 @@
     "id": "datatools",
     "name": "Validated data tools",
     "layer": "assistant",
-    "status": "planned",
+    "status": "implemented",
     "layout": {
       "x": 770,
       "y": 184,
       "w": 210,
       "h": 84
     },
-    "summary": "Planned: narrow, authorized, templated data operations for the assistant.",
-    "responsibility": "Planned Phase 4: approved aggregate operations over synthetic demo data for anonymous visitors, and the existing governed SQL path for signed-in users. Not implemented: the assistant cannot yet answer questions about current values.",
-    "inputs": [],
-    "outputs": [],
+    "summary": "Narrow, authorized, templated data operations with recorded evidence for every figure.",
+    "responsibility": "Executes a fixed set of operations (metric current value, metric by period, period comparison, quality summary, reconciliation status; signed-in: recent runs and run insights). Arguments are strictly validated; SQL is generated from validated values and runs through the same governed path as a person's query. Each call is persisted as evidence and audited.",
+    "inputs": [
+      "Tool name and validated arguments",
+      "Principal (the verified caller, or the fixed public identity)"
+    ],
+    "outputs": [
+      "Evidence: values, definition, window, execution id, qualifications, limitations"
+    ],
     "dependencies": [
       "query",
-      "reporting"
+      "reporting",
+      "postgres"
     ],
-    "data": "None yet.",
-    "security": "Would run under a dedicated read-only public principal with rate limits.",
+    "data": "assistant.tool_calls (aggregate results only), plus the query executions and audit events the governed path already records.",
+    "security": "Anonymous callers run as a least-privileged role on one explicitly named synthetic tenant and only the public tools; signed-in callers run as themselves. The model cannot supply SQL, tenant, role or identity. Re-authorized at execution by the query path.",
     "failure_modes": [
-      "Not built"
+      "Field hidden from the role: no figure, answer says it is not available",
+      "Timeout or validation failure: no figure, failure recorded",
+      "Public data not enabled on the server: declined"
     ],
     "why": "Questions about numbers must be answered by computation, never by retrieved prose.",
     "decisions": [
       "D-retrieval"
     ],
     "refs": [
+      {
+        "label": "Tools",
+        "path": "src/assistant/tools.ts"
+      },
+      {
+        "label": "Planner",
+        "path": "src/assistant/planner.ts"
+      },
       {
         "label": "ADR 0018",
         "path": "docs/adr/0018-grounded-assistant.md"

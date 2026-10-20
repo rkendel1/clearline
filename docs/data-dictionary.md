@@ -12,6 +12,7 @@ Three layers: **platform tables** in schema `core` (fixed, versioned migrations 
 | 0002_review_hardening.sql | 2026-10-20 | `194358b67e16f02b…` |
 | 0003_query_workspace.sql | 2026-10-20 | `d031b1be1999c7e9…` |
 | 0004_saved_analytics.sql | 2026-10-20 | `45737303184230b8…` |
+| 0005_assistant_tool_calls.sql | 2026-10-20 | `08dcc5ac230648a9…` |
 
 Tenant storage changes are not platform migrations: they are contract migrations, planned and recorded in `core.contract_migrations` (see docs/contracts.md).
 

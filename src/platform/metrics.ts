@@ -55,6 +55,8 @@ export const metrics = {
   assistantAnswerSeconds: new Histogram('clearline_assistant_answer_seconds', 'Assistant model answer generation time', [0.25, 0.5, 1, 2.5, 5, 10, 20, 40]),
   assistantRateLimited: new Counter('clearline_assistant_rate_limited_total', 'Assistant requests refused by the rate limiter'),
   assistantErrors: new Counter('clearline_assistant_errors_total', 'Assistant failures by subsystem'),
+  assistantToolCalls: new Counter('clearline_assistant_tool_calls_total', 'Assistant data tool invocations by tool and outcome (ok, invalid_arguments, not_permitted, ...)'),
+  assistantToolSeconds: new Histogram('clearline_assistant_tool_seconds', 'Assistant data tool execution time', [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 15]),
   deliveryAttempts: new Counter('clearline_delivery_attempts_total', 'Delivery attempts by destination kind and result'),
 };
 

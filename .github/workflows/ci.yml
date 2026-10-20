@@ -38,8 +38,8 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
-      - name: Web client (typecheck and production build)
-        run: npm ci --prefix web && npm run build --prefix web
+      - name: Web client (typecheck, unit tests, production build)
+        run: npm ci --prefix web && npm test --prefix web && npm run build --prefix web
       - name: Dependency audit (production dependencies, high and above fail the build)
         run: |
           npm audit --omit=dev --audit-level=high
@@ -51,6 +51,10 @@ jobs:
         run: npm run test:integration
       - name: Demonstration scenarios A–T
         run: npm run test:scenarios
+      - name: Install Chromium for the web end-to-end tests
+        run: npx playwright install --with-deps chromium
+      - name: Web end-to-end acceptance (public walkthrough and assistant, scenarios A-E)
+        run: npm run test:e2e:web
       - name: Mutation checks (planted defects must be caught by the tests)
         run: npm run test:mutation
       - name: Small benchmark (smoke; numbers from CI runners are not published)
