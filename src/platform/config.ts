@@ -83,6 +83,18 @@ function oneOf<T extends string>(name: string, allowed: readonly T[], def: T): T
   return v;
 }
 
+/** Fail with what is wrong, never with the value (it contains a password). */
+function validDatabaseUrl(name: string, value: string): string {
+  let u: URL;
+  try { u = new URL(value); } catch {
+    throw new Error(`${name} is not a valid URL. Expected postgres://USER:PASSWORD@HOST:5432/DBNAME (optionally ?sslmode=...). Characters such as @ : / # ? in the password must be percent-encoded. Check for quotes, spaces, angle brackets or a leftover placeholder.`);
+  }
+  if (!/^postgres(ql)?:$/.test(u.protocol)) throw new Error(`${name} must start with postgres:// or postgresql:// (got "${u.protocol}//")`);
+  if (!u.hostname) throw new Error(`${name} has no host`);
+  if (!u.pathname || u.pathname === '/') throw new Error(`${name} has no database name after the host (…/DBNAME)`);
+  return value;
+}
+
 let cached: Config | undefined;
 
 export function loadConfig(): Config {
@@ -91,7 +103,7 @@ export function loadConfig(): Config {
   // A silent localhost default in production only shows up later as ECONNREFUSED; say what is missing instead.
   if (env === 'production' && !process.env.DATABASE_URL) throw new Error('DATABASE_URL is required in production (on Fly: fly postgres attach <db-app> --app <app>, or fly secrets set DATABASE_URL=...)');
   const cfg: Config = {
-    databaseUrl: str('DATABASE_URL', 'postgres://clearline:clearline@localhost:5432/clearline'),
+    databaseUrl: validDatabaseUrl('DATABASE_URL', str('DATABASE_URL', 'postgres://clearline:clearline@localhost:5432/clearline')),
     port: int('PORT', 8080),
     host: str('HOST', '0.0.0.0'),
     env,
