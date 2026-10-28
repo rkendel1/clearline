@@ -83,15 +83,36 @@ function oneOf<T extends string>(name: string, allowed: readonly T[], def: T): T
   return v;
 }
 
-/** Fail with what is wrong, never with the value (it contains a password). */
-function validDatabaseUrl(name: string, value: string): string {
+/** Describe the shape of a bad value without revealing it (it contains a password). */
+function shape(v: string): string {
+  const parts: string[] = [`length ${v.length}`];
+  if (!v.length) return 'the value is empty';
+  if (/^\s|\s$/.test(v)) parts.push('has leading or trailing whitespace');
+  if (/\s/.test(v.trim())) parts.push('contains whitespace inside');
+  if (/^["'`<]/.test(v.trim())) parts.push('starts with a quote or "<"');
+  if (/["'`>]$/.test(v.trim())) parts.push('ends with a quote or ">"');
+  const scheme = /^\s*["'`<]*([a-z][a-z0-9+.-]*):\/\//i.exec(v);
+  parts.push(scheme ? `scheme "${scheme[1]}"` : 'no scheme:// prefix');
+  parts.push(`${(v.match(/@/g) ?? []).length} "@" character(s)`);
+  if (/^\s*["'`<]*[a-z]+:\/\/[^@/]*:\s*$/i.test(v)) parts.push('looks truncated after the user name');
+  return parts.join('; ');
+}
+
+/** Tolerate the usual paste damage (surrounding whitespace, quotes or angle brackets), then require a usable postgres URL. Errors never contain the value. */
+function validDatabaseUrl(name: string, raw: string): string {
+  let value = raw.trim().replace(/^(["'`<])(.*)(["'`>])$/s, '$2').trim();
+  // Salvage common paste damage: the whole "DATABASE_URL=postgres://..." line (or "export ...", "psql ...") stored as the value,
+  // or a URL missing its scheme ("user:password@host:5432/db"). The text before the URL is dropped, never logged.
+  const embedded = /postgres(?:ql)?:\/\/[^\s"'`<>]+/.exec(value);
+  if (embedded && embedded.index > 0) { process.stderr.write(`${name}: ignoring ${embedded.index} unexpected character(s) before postgres://; fix the secret when convenient\n`); value = embedded[0]; }
+  else if (!embedded && !value.includes('://') && /^[^\s:@/]+:[^\s@]*@[^\s/]+\/[^\s]+$/.test(value)) { process.stderr.write(`${name}: no postgres:// prefix; assuming postgres://; fix the secret when convenient\n`); value = `postgres://${value}`; }
   let u: URL;
   try { u = new URL(value); } catch {
-    throw new Error(`${name} is not a valid URL. Expected postgres://USER:PASSWORD@HOST:5432/DBNAME (optionally ?sslmode=...). Characters such as @ : / # ? in the password must be percent-encoded. Check for quotes, spaces, angle brackets or a leftover placeholder.`);
+    throw new Error(`${name} is not a valid URL (${shape(raw)}). Expected postgres://USER:PASSWORD@HOST:5432/DBNAME, optionally ?sslmode=disable. Characters such as @ : / # ? inside the password must be percent-encoded.`);
   }
-  if (!/^postgres(ql)?:$/.test(u.protocol)) throw new Error(`${name} must start with postgres:// or postgresql:// (got "${u.protocol}//")`);
-  if (!u.hostname) throw new Error(`${name} has no host`);
-  if (!u.pathname || u.pathname === '/') throw new Error(`${name} has no database name after the host (…/DBNAME)`);
+  if (!/^postgres(ql)?:$/.test(u.protocol)) throw new Error(`${name} must start with postgres:// or postgresql:// (${shape(raw)})`);
+  if (!u.hostname) throw new Error(`${name} has no host (${shape(raw)})`);
+  if (!u.pathname || u.pathname === '/') throw new Error(`${name} has no database name after the host: …/DBNAME (${shape(raw)})`);
   return value;
 }
 
