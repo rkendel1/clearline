@@ -29,3 +29,13 @@ test('unusable values are rejected with a description that never contains the va
     assert.ok(e, v); assert.ok(!e.includes('SECRETPW') && !e.includes('garbage-secret-value'), `error leaked the value: ${e}`);
   }
 });
+
+test('TRUST_PROXY accepts true, a hop count or nothing', () => {
+  const read = (v: string | undefined) => {
+    const saved = process.env.TRUST_PROXY;
+    if (v === undefined) delete process.env.TRUST_PROXY; else process.env.TRUST_PROXY = v;
+    resetConfigForTests();
+    try { return loadConfig().trustProxy; } finally { if (saved === undefined) delete process.env.TRUST_PROXY; else process.env.TRUST_PROXY = saved; resetConfigForTests(); }
+  };
+  assert.equal(read(undefined), false); assert.equal(read('false'), false); assert.equal(read('true'), true); assert.equal(read('1'), 1); assert.equal(read('2'), 2); assert.equal(read('garbage'), false);
+});

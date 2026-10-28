@@ -18,7 +18,7 @@ declare module 'fastify' { interface FastifyRequest { principal?: Principal; cor
 
 export async function buildServer(): Promise<FastifyInstance> {
   const cfg = loadConfig();
-  const app = Fastify({ logger: false, bodyLimit: cfg.maxUploadBytes, genReqId: () => randomUUID(), requestTimeout: cfg.batchTimeoutMs });
+  const app = Fastify({ logger: false, trustProxy: cfg.trustProxy as boolean, bodyLimit: cfg.maxUploadBytes, genReqId: () => randomUUID(), requestTimeout: cfg.batchTimeoutMs });
 
   app.addContentTypeParser(['text/csv', 'application/octet-stream'], { parseAs: 'buffer' }, (_req, b, done) => done(null, b));
 

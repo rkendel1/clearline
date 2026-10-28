@@ -15,6 +15,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadReferenceDataset, type SubmitApi } from '../synthetic/reference-dataset.js';
 import { DEV_TOKENS } from './seed.js';
+
+// Tokens for the two demo tenants: the well-known local ones, or those printed by provision-demo (DEMO_TOKENS_JSON) for a real deployment.
+const TOKENS: typeof DEV_TOKENS = process.env.DEMO_TOKENS_JSON ? { ...DEV_TOKENS, ...JSON.parse(process.env.DEMO_TOKENS_JSON) } : DEV_TOKENS;
 import { analyticsClaims, ANOMALY_DATE } from '../synthetic/analytics-dataset.js';
 import { nwMembers, toCsv, NW_CLAIM_COLUMNS } from '../synthetic/generator.js';
 
@@ -58,7 +61,7 @@ async function waitIdle(tenant: string, token: string) {
 const line = (s = '') => console.log(s);
 
 await waitReady();
-const existing = (await call(DEV_TOKENS.northwind.reporter, 'GET', '/api/v1/tenants/northwind/batches?limit=1')).body;
+const existing = (await call(TOKENS.northwind.reporter, 'GET', '/api/v1/tenants/northwind/batches?limit=1')).body;
 if (Array.isArray(existing) && existing.length) {
   line('This database already contains demo batches. Reset it first (docker compose down -v && docker compose up -d) for a clean, reproducible run.');
   process.exit(2);
@@ -66,13 +69,13 @@ if (Array.isArray(existing) && existing.length) {
 
 line(`Clearline demo against ${BASE}`);
 line('Loading the reference dataset: northwind (plans, 150 members, 400 claims incl. 3 defective, 25 corrections, 1 exact redelivery, 60 claims with a wrong control count, 120 pharmacy fills) and bluefin (plans, enrollees, 300 rx claims)…');
-const truth = await loadReferenceDataset(submitter(DEV_TOKENS.northwind.operator), submitter(DEV_TOKENS.bluefin.operator));
-await waitIdle('northwind', DEV_TOKENS.northwind.operator);
-await waitIdle('bluefin', DEV_TOKENS.bluefin.operator);
+const truth = await loadReferenceDataset(submitter(TOKENS.northwind.operator), submitter(TOKENS.bluefin.operator));
+await waitIdle('northwind', TOKENS.northwind.operator);
+await waitIdle('bluefin', TOKENS.bluefin.operator);
 
 let mismatches = 0;
 for (const tenant of ['northwind', 'bluefin'] as const) {
-  const biz = (await call(DEV_TOKENS[tenant].reporter, 'GET', `/api/v1/tenants/${tenant}/reports/business`)).body;
+  const biz = (await call(TOKENS[tenant].reporter, 'GET', `/api/v1/tenants/${tenant}/reports/business`)).body;
   line(`\n${tenant} — business metrics (trusted data only) vs generator truth`);
   for (const m of biz.metrics) {
     const ok = m.value === truth[tenant][m.id];
@@ -81,7 +84,7 @@ for (const tenant of ['northwind', 'bluefin'] as const) {
   }
 }
 
-const ops = (await call(DEV_TOKENS.northwind.operator, 'GET', '/api/v1/tenants/northwind/reports/operations')).body;
+const ops = (await call(TOKENS.northwind.operator, 'GET', '/api/v1/tenants/northwind/reports/operations')).body;
 line('\nnorthwind — batches: ran vs trusted');
 for (const b of [...ops.recent_batches].reverse()) {
   line(`  ${b.id.slice(0, 8)}  ${b.source_id.padEnd(22)} ran=${b.status.padEnd(26)} trust=${b.trust_status.padEnd(9)} rows=${b.received_count} accepted=${b.accepted_count} quarantined=${b.quarantined_count}${b.trust_reasons?.length ? `\n            why: ${b.trust_reasons.join('; ')}` : ''}`);
@@ -90,24 +93,24 @@ line(`  duplicate submissions ignored: ${ops.totals.duplicate_submissions}`);
 
 const untrusted = ops.recent_batches.find((b: { trust_status: string }) => b.trust_status === 'untrusted');
 if (untrusted) {
-  const d = (await call(DEV_TOKENS.northwind.operator, 'GET', `/api/v1/tenants/northwind/batches/${untrusted.id}`)).body;
+  const d = (await call(TOKENS.northwind.operator, 'GET', `/api/v1/tenants/northwind/batches/${untrusted.id}`)).body;
   line('\nWhy the untrusted batch is held back:');
   for (const r of d.reconciliation.filter((x: { status: string }) => x.status === 'failed')) line(`  ${r.check_id}: ${r.explanation}`);
 }
-const exc = (await call(DEV_TOKENS.northwind.operator, 'GET', '/api/v1/tenants/northwind/reports/exceptions')).body;
+const exc = (await call(TOKENS.northwind.operator, 'GET', '/api/v1/tenants/northwind/reports/exceptions')).body;
 line('\nQuarantined records (actionable reasons):');
 for (const q of exc.quarantined) line(`  row ${q.source_row} of ${q.source_id}: ${q.reasons.map((r: { message: string }) => r.message).join('; ')}`);
 
-const lin = (await call(DEV_TOKENS.northwind.operator, 'GET', `/api/v1/tenants/northwind/lineage/claim/${truth.trustedClaimIds[100]}`)).body;
+const lin = (await call(TOKENS.northwind.operator, 'GET', `/api/v1/tenants/northwind/lineage/claim/${truth.trustedClaimIds[100]}`)).body;
 line(`\nLineage of claim ${lin.key}: ${lin.versions.map((v: { record_id: number; contract_version: string; is_current: boolean; source_row: { row_number: number } }) => `record ${v.record_id} (contract ${v.contract_version}, source row ${v.source_row?.row_number}${v.is_current ? ', current' : ', superseded'})`).join(' -> ')}`);
 
-const g = await call(DEV_TOKENS.bluefin.admin, 'GET', '/api/v1/tenants/northwind/reports/business');
-const s = await call(DEV_TOKENS.northwind.reporter, 'GET', '/api/v1/tenants/northwind/extracts/eligibility/csv?include_sensitive=true');
+const g = await call(TOKENS.bluefin.admin, 'GET', '/api/v1/tenants/northwind/reports/business');
+const s = await call(TOKENS.northwind.reporter, 'GET', '/api/v1/tenants/northwind/extracts/eligibility/csv?include_sensitive=true');
 line(`\nPrivacy: bluefin admin reading northwind -> HTTP ${g.status} ${g.body.error?.code}; northwind reporter exporting sensitive fields -> HTTP ${s.status} ${s.body.error?.code}. Both audited.`);
 
 if (process.argv.includes('--with-migration')) {
   const v2 = JSON.parse(readFileSync(path.join(ROOT, 'contracts/northwind/v2.json'), 'utf8'));
-  const p = await call(DEV_TOKENS.northwind.admin, 'POST', '/api/v1/tenants/northwind/contracts', v2);
+  const p = await call(TOKENS.northwind.admin, 'POST', '/api/v1/tenants/northwind/contracts', v2);
   line(`\nContract evolution: published northwind 2.0.0 -> HTTP ${p.status}, ${p.body.lifecycle}, migration ${p.body.migration_id} (${p.body.plan?.changes.filter((c: { classification: string }) => c.classification === 'breaking').length} breaking changes).`);
   line('  Review the plan under Contracts in the native client and approve it signed in with the approver token (cl_dev_northwind_approver).');
 }
@@ -115,7 +118,7 @@ if (process.argv.includes('--with-migration')) {
 if (!process.argv.includes('--skip-query-demo')) mismatches += await queryDemo();
 if (!process.argv.includes('--skip-analytics-demo')) mismatches += await analyticsDemo();
 
-line(`\nNative client: npm run native:run -- --url ${process.env.PUBLIC_URL ?? BASE}  (sign in with ${DEV_TOKENS.northwind.operator}, ${DEV_TOKENS.northwind.reporter}, ${DEV_TOKENS.northwind.steward} or ${DEV_TOKENS.northwind.admin}).`);
+line(`\nNative client: npm run native:run -- --url ${process.env.PUBLIC_URL ?? BASE}  (sign in with ${TOKENS.northwind.operator}, ${TOKENS.northwind.reporter}, ${TOKENS.northwind.steward} or ${TOKENS.northwind.admin}).`);
 line(mismatches === 0 ? 'Result: every metric and every checked query result matches ground truth.' : `Result: ${mismatches} figure(s) differ from ground truth.`);
 process.exit(mismatches === 0 ? 0 : 1);
 
@@ -125,12 +128,12 @@ process.exit(mismatches === 0 ? 0 : 1);
 async function queryDemo(): Promise<number> {
   let bad = 0;
   const q = (role: keyof typeof DEV_TOKENS.northwind) => ({
-    ask: async (question: string) => (await call(DEV_TOKENS.northwind[role], 'POST', '/api/v1/tenants/northwind/queries/proposals', { question })).body,
-    sql: async (sqlText: string) => (await call(DEV_TOKENS.northwind[role], 'POST', '/api/v1/tenants/northwind/queries/proposals', { sql: sqlText })).body,
-    run: async (id: string) => call(DEV_TOKENS.northwind[role], 'POST', `/api/v1/tenants/northwind/queries/proposals/${id}/execute`, { mode: 'run' }),
+    ask: async (question: string) => (await call(TOKENS.northwind[role], 'POST', '/api/v1/tenants/northwind/queries/proposals', { question })).body,
+    sql: async (sqlText: string) => (await call(TOKENS.northwind[role], 'POST', '/api/v1/tenants/northwind/queries/proposals', { sql: sqlText })).body,
+    run: async (id: string) => call(TOKENS.northwind[role], 'POST', `/api/v1/tenants/northwind/queries/proposals/${id}/execute`, { mode: 'run' }),
   });
   const policy = (role: keyof typeof DEV_TOKENS.northwind, entity: string, field: string, patch: unknown) =>
-    call(DEV_TOKENS.northwind[role], 'POST', `/api/v1/tenants/northwind/fields/${entity}/${field}/policy`, patch);
+    call(TOKENS.northwind[role], 'POST', `/api/v1/tenants/northwind/fields/${entity}/${field}/policy`, patch);
   line('\n=== Query workspace: natural-language SQL under role-aware field policy ===');
 
   // 1. An authorized analyst generates and executes a query; checked against ground truth.
@@ -166,9 +169,9 @@ async function queryDemo(): Promise<number> {
   const npi = await q('reporter').sql('SELECT claim_id, provider_npi FROM claim ORDER BY claim_id LIMIT 3');
   const nr = (await q('reporter').run(npi.id)).body;
   line(`4. Reporter query: ${nr.rows.map((r: unknown[]) => `${r[0]}=${r[1]}`).join(', ')}`);
-  const rec = (await call(DEV_TOKENS.northwind.operator, 'GET', '/api/v1/tenants/northwind/entities/claim/records?limit=2')).body;
+  const rec = (await call(TOKENS.northwind.operator, 'GET', '/api/v1/tenants/northwind/entities/claim/records?limit=2')).body;
   line(`   Operator record view: ${rec.records.map((r: Record<string, unknown>) => `${r.claim_id}=${r.provider_npi}`).join(', ')} (redacted fields: ${JSON.stringify(rec.redacted)})`);
-  const lin = (await call(DEV_TOKENS.northwind.operator, 'GET', `/api/v1/tenants/northwind/lineage/claim/${truth.trustedClaimIds[100]}`)).body;
+  const lin = (await call(TOKENS.northwind.operator, 'GET', `/api/v1/tenants/northwind/lineage/claim/${truth.trustedClaimIds[100]}`)).body;
   line(`   Operator lineage of ${lin.key}: provider_npi=${lin.versions[0].values.provider_npi}, raw source RENDERING_NPI=${lin.versions[0].source_row?.mapped_columns?.RENDERING_NPI}`);
   const steward = await policy('steward', 'claim', 'provider_npi', { sensitive: false });
   line(`   Steward tries to remove the sensitivity (a widening) -> HTTP ${steward.status} ${steward.body.error?.code}`);
@@ -183,7 +186,7 @@ async function queryDemo(): Promise<number> {
   }
 
   // 6. Audit evidence: decisions and outcomes, without the sensitive values.
-  const audit = (await call(DEV_TOKENS.northwind.admin, 'GET', '/api/v1/tenants/northwind/audit?limit=400')).body as { action: string; outcome: string; details: unknown }[];
+  const audit = (await call(TOKENS.northwind.admin, 'GET', '/api/v1/tenants/northwind/audit?limit=400')).body as { action: string; outcome: string; details: unknown }[];
   const counts: Record<string, number> = {};
   for (const e of audit.filter((x) => /^(query\.|policy\.)/.test(x.action))) counts[`${e.action}:${e.outcome}`] = (counts[`${e.action}:${e.outcome}`] ?? 0) + 1;
   line('\n6. Audit evidence (query and policy events):');
@@ -208,8 +211,8 @@ async function analyticsDemo(): Promise<number> {
     get: async (u: string) => (await call(token, 'GET', `${T}${u}`)),
     post: async (u: string, b: unknown = {}) => (await call(token, 'POST', `${T}${u}`, b)),
   });
-  const reporter = as(DEV_TOKENS.northwind.reporter);
-  const admin = as(DEV_TOKENS.northwind.admin);
+  const reporter = as(TOKENS.northwind.reporter);
+  const admin = as(TOKENS.northwind.admin);
   const must = (r: { status: number; body: any }, what: string) => { if (r.status >= 300) throw new Error(`${what}: HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 400)}`); return r.body; };
   const waitRun = async (who: ReturnType<typeof as>, id: string) => {
     for (let i = 0; i < 240; i++) {
@@ -221,8 +224,8 @@ async function analyticsDemo(): Promise<number> {
   };
   line('\n=== Saved analytics: saved queries, schedules, ML analyses and delivery ===');
   const { rows, truth } = analyticsClaims(nwMembers(150, 1).map((m) => m.MBR_ID));
-  must(await submitter(DEV_TOKENS.northwind.operator).csv('northwind', 'nw_medical_claims_csv', toCsv(rows as never, NW_CLAIM_COLUMNS)), 'analytics claims');
-  await waitIdle('northwind', DEV_TOKENS.northwind.operator);
+  must(await submitter(TOKENS.northwind.operator).csv('northwind', 'nw_medical_claims_csv', toCsv(rows as never, NW_CLAIM_COLUMNS)), 'analytics claims');
+  await waitIdle('northwind', TOKENS.northwind.operator);
   line(`Loaded ${truth.claims} more claims over ${truth.from}..${truth.to} (weekly pattern; one unusual day planted on ${ANOMALY_DATE}).`);
 
   // 1. Save a natural-language-generated query.

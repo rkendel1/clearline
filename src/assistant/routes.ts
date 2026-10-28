@@ -81,7 +81,7 @@ export const assistantHandlers = {
     } catch { retrieval = { available: false, reason: 'database' }; }
     const g = generatorInfo();
     const l = limits();
-    return { retrieval, embedder: { configured: getEmbedder().id, model: getEmbedder().model }, generator: g, data_tools: { public_enabled: publicDataEnabled(), authenticated: true, tools: toolNames() }, limits: { max_message_chars: l.maxMessage, retrieval_k: l.k, context_chars: l.contextChars, rate_per_minute: rate().client, data_questions_per_minute: dataRate().client } };
+    return { retrieval, embedder: { configured: getEmbedder().id, model: getEmbedder().model }, generator: g, demo_tokens: process.env.SHOW_DEMO_TOKENS === 'true', data_tools: { public_enabled: publicDataEnabled(), authenticated: true, tools: toolNames() }, limits: { max_message_chars: l.maxMessage, retrieval_k: l.k, context_chars: l.contextChars, rate_per_minute: rate().client, data_questions_per_minute: dataRate().client } };
   },
   evidence: async (req: FastifyRequest) => {
     const id = str((req.query as Record<string, string>).id, 64, 'id');

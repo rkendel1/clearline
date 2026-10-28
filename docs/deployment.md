@@ -109,7 +109,15 @@ The first release needs no Kubernetes. A conventional managed deployment:
 
 The Compose file is the executable specification of the topology: one database, a migration job, N stateless API instances, M workers. Moving to the table above changes where each runs, not what runs.
 
-## Fly.io
+## Hetzner (single server)
+
+The maintained production path is a single Linux server running Docker Compose with Caddy for HTTPS: see [deploy/hetzner/README.md](../deploy/hetzner/README.md) (`deploy/hetzner/deploy.sh root@HOST domain`). It uses a non-superuser database login, publishes only ports 22/80/443, blocks `/metrics` at the proxy, sets `TRUST_PROXY=1` so per-visitor rate limits use the real client address, and takes nightly backups.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `TRUST_PROXY` | `false` | Number of reverse-proxy hops to trust for the client address (`1` behind Caddy). Needed for per-visitor rate limits behind a proxy; leave `false` when the API is exposed directly |
+
+## Fly.io (not maintained)
 
 [`fly.toml`](../fly.toml) runs the API and the worker as two process groups of one image, applies migrations as the release command, and health-checks `/readyz`. Production mode (`NODE_ENV=production`) **refuses to start** without a query-login secret, which is the usual first failure (`QUERY_DATABASE_URL or QUERY_DB_PASSWORD is required in production`). Set the secrets before the first deploy:
 

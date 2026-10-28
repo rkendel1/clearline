@@ -1,0 +1,105 @@
+# Production stack for a single Linux server (Hetzner): PostgreSQL (pgvector), migrations, API + web app + assistant,
+# worker, and Caddy for automatic HTTPS. Run it with deploy.sh, or by hand:
+#   docker compose --env-file /opt/clearline/.env up -d --build
+# Secrets live in /opt/clearline/.env on the server (created by setup-server.sh), never in the repository.
+name: clearline
+
+x-app: &app
+  build: { context: ../.. , dockerfile: Dockerfile }
+  image: clearline:prod
+  restart: unless-stopped
+  environment: &env
+    NODE_ENV: production
+    DATABASE_URL: postgres://clearline_app:${APP_DB_PASSWORD:?run setup-server.sh to create /opt/clearline/.env}@db:5432/clearline
+    QUERY_DB_PASSWORD: ${QUERY_DB_PASSWORD:?missing}
+    PUBLIC_URL: ${PUBLIC_URL:-http://localhost}
+    TRUST_PROXY: "1"                      # one reverse proxy (Caddy): per-visitor rate limits need the real client address
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    DB_POOL_SIZE: "10"
+    NL_SQL_PROVIDER: ${NL_SQL_PROVIDER:-deterministic}
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    ANTHROPIC_WORKSPACE_ID: ${ANTHROPIC_WORKSPACE_ID:-}
+    METRICS_TOKEN: ${METRICS_TOKEN:-}
+    ASSISTANT_PUBLIC_DATA_TENANT: ${ASSISTANT_PUBLIC_DATA_TENANT:-}   # empty = anonymous visitors get no data answers
+
+services:
+  db:
+    build: { context: ../../db }
+    image: clearline-db:prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?missing}      # the administrative login, used only for setup and backups
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?missing}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d clearline"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    shm_size: 256mb
+
+  migrate:
+    <<: *app
+    # Preflight (can the login create roles?), then migrations. Failing here stops the rollout before anything starts.
+    command: ["sh", "-c", "node dist/src/cli.js db-check && node dist/src/cli.js migrate"]
+    depends_on: { db: { condition: service_healthy } }
+    restart: "no"
+
+  index:
+    <<: *app
+    # Builds the assistant's document index. Failure is not fatal: the assistant then says search is unavailable.
+    command: ["node", "dist/src/cli.js", "assistant-index"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: "no"
+
+  api:
+    <<: *app
+    command: ["node", "dist/src/main.js"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      index: { condition: service_completed_successfully, required: false }
+    ports:
+      - "127.0.0.1:${API_PORT:-8090}:8080"   # loopback only: for a proxy already running on the host (the bundled Caddy talks to it over the compose network)
+    stop_grace_period: 30s
+    mem_limit: 1536m          # the assistant's embedding model needs about 1 GB when first used
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 20s
+
+  worker:
+    <<: *app
+    command: ["node", "dist/src/worker-main.js"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    stop_grace_period: 30s
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "node", "dist/src/worker-health.js"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  caddy:
+    profiles: ["own-caddy"]              # started only when COMPOSE_PROFILES=own-caddy (a server where this stack owns ports 80/443)
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}     # your domain for automatic HTTPS (e.g. clearline.example.com), or :80 for plain HTTP
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: { api: { condition: service_healthy } }
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

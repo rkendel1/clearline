@@ -74,6 +74,7 @@ export interface Config {
   emailFrom: string;
   emailOutboxDir: string;
   emailAllowedDomains: string[];   // empty = any domain
+  trustProxy: boolean | number;    // how many reverse-proxy hops to trust for the client address (TRUST_PROXY=1 behind one proxy); false = use the socket address
   publicUrl: string;               // base URL used in links inside deliveries
 }
 
@@ -180,7 +181,9 @@ export function loadConfig(): Config {
     emailFrom: str('EMAIL_FROM', 'clearline@localhost'),
     emailOutboxDir: str('EMAIL_OUTBOX_DIR', 'var/outbox'),
     emailAllowedDomains: str('EMAIL_ALLOWED_DOMAINS', '').split(',').map((d) => d.trim().toLowerCase()).filter(Boolean),
-    publicUrl: str('PUBLIC_URL', 'http://localhost:8080').replace(/\/$/, ''),
+    trustProxy: ((v) => (v === 'true' ? true : /^\d+$/.test(v) ? Number(v) : false))(str('TRUST_PROXY', 'false')),
+    // On Render the platform supplies RENDER_EXTERNAL_URL; PUBLIC_URL overrides it (for a custom domain).
+    publicUrl: str('PUBLIC_URL', process.env.RENDER_EXTERNAL_URL ?? 'http://localhost:8080').replace(/\/$/, ''),
   };
   if (env === 'production' && process.env.WEBHOOK_ALLOW_PRIVATE === 'true') throw new Error('WEBHOOK_ALLOW_PRIVATE is not permitted in production');
   if (cfg.emailProvider === 'smtp' && !cfg.smtpUrl) throw new Error('EMAIL_PROVIDER=smtp requires SMTP_URL');
